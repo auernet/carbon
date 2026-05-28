@@ -242,7 +242,8 @@ ensureColumn('entities', 'invoice_notes_default', 'TEXT');
 ensureColumn('entities', 'period_lock_through', 'TEXT');
 ensureColumn('invoices', 'share_token', 'TEXT');
 ensureColumn('invoices', 'last_reminder_at', 'TEXT');
-ensureColumn('webhook_deliveries', 'attempt', 'INTEGER NOT NULL DEFAULT 1');
+// webhook_deliveries.attempt — applied AFTER the inline CREATE TABLE below (line ~281)
+// because the table doesn't exist in db/schema.sql.
 
 // Add indexes for hot-path queries (idempotent).
 db.exec(`
@@ -321,6 +322,8 @@ ensureColumn('invoices', 'recurrence_next_run', 'TEXT');                  // YYY
 ensureColumn('invoices', 'recurrence_active',   'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('invoices', 'amount_paid',         'REAL NOT NULL DEFAULT 0');
 ensureColumn('money_flows', 'category',         'TEXT');                  // free-text expense/income tag
+// Tables created inline above (CREATE TABLE IF NOT EXISTS) — apply their column migrations here.
+ensureColumn('webhook_deliveries', 'attempt', 'INTEGER NOT NULL DEFAULT 1');
 
 // invoice_payments table (for partial payments)
 db.exec(`
