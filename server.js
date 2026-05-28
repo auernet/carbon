@@ -245,15 +245,10 @@ ensureColumn('invoices', 'last_reminder_at', 'TEXT');
 // webhook_deliveries.attempt — applied AFTER the inline CREATE TABLE below (line ~281)
 // because the table doesn't exist in db/schema.sql.
 
-// Add indexes for hot-path queries (idempotent).
+// Indexes on schema.sql tables only (others are added after their inline CREATE TABLE below).
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_invoices_due_date  ON invoices(due_date);
   CREATE INDEX IF NOT EXISTS idx_invoices_direction ON invoices(direction);
-  CREATE INDEX IF NOT EXISTS idx_notifications_ts   ON notifications(ts DESC);
-  CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read);
-  CREATE INDEX IF NOT EXISTS idx_tasks_status       ON tasks(status);
-  CREATE INDEX IF NOT EXISTS idx_tasks_due          ON tasks(due_date);
-  CREATE INDEX IF NOT EXISTS idx_wh_deliveries_hook ON webhook_deliveries(webhook_id, ts DESC);
 `);
 
 db.exec(`
@@ -322,8 +317,15 @@ ensureColumn('invoices', 'recurrence_next_run', 'TEXT');                  // YYY
 ensureColumn('invoices', 'recurrence_active',   'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('invoices', 'amount_paid',         'REAL NOT NULL DEFAULT 0');
 ensureColumn('money_flows', 'category',         'TEXT');                  // free-text expense/income tag
-// Tables created inline above (CREATE TABLE IF NOT EXISTS) — apply their column migrations here.
+// Tables created inline above (CREATE TABLE IF NOT EXISTS) — apply their column migrations + indexes here.
 ensureColumn('webhook_deliveries', 'attempt', 'INTEGER NOT NULL DEFAULT 1');
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_notifications_ts   ON notifications(ts DESC);
+  CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read);
+  CREATE INDEX IF NOT EXISTS idx_tasks_status       ON tasks(status);
+  CREATE INDEX IF NOT EXISTS idx_tasks_due          ON tasks(due_date);
+  CREATE INDEX IF NOT EXISTS idx_wh_deliveries_hook ON webhook_deliveries(webhook_id, ts DESC);
+`);
 
 // invoice_payments table (for partial payments)
 db.exec(`
