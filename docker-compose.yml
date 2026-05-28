@@ -1,0 +1,25 @@
+services:
+  carbon:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4040
+      BIND_HOST: 0.0.0.0
+      # Optional SMTP for outgoing reminders/dunning.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - carbon-data:/app/data
+    ports:
+      - "4040:4040"
+    labels:
+      # Coolify autodetects these; harmless if Coolify rewrites them.
+      caddy: carbon.aa.ag
+      caddy.reverse_proxy: "{{upstreams 4040}}"
+
+volumes:
+  carbon-data:

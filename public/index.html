@@ -1,0 +1,1427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Carbon</title>
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M 77.7 34 A 32 32 0 1 0 77.7 66' stroke='%231f8a52' stroke-width='16' fill='none' stroke-linecap='round'/></svg>" />
+  <script>
+    // Pre-paint theme apply to avoid flash of wrong theme.
+    (function () {
+      var pref = localStorage.getItem('carbon.theme') || 'light';
+      if (pref === 'system') {
+        pref = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', pref);
+    })();
+  </script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#1f8a52" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/countries.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 77.7 34 A 32 32 0 1 0 77.7 66" stroke="currentColor" stroke-width="14" fill="none" stroke-linecap="round"/>
+        </svg>
+        <strong>Carbon</strong>
+      </div>
+
+      <nav class="tabs" aria-label="Sections">
+        <div class="nav-group">
+          <button class="tab active" data-tab="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+            </svg>
+            <span>Dashboard</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Work</div>
+          <button class="tab" data-tab="contacts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span>Contacts</span>
+          </button>
+          <button class="tab" data-tab="tasks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <span>Tasks</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Finance</div>
+          <button class="tab" data-tab="invoices">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>
+            </svg>
+            <span>Invoices &amp; Bills</span>
+          </button>
+          <button class="tab" data-tab="banks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>
+            </svg>
+            <span>Banks</span>
+          </button>
+          <button class="tab" data-tab="flows">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+            <span>Flows</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Governance</div>
+          <button class="tab" data-tab="contracts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/>
+            </svg>
+            <span>Contracts</span>
+          </button>
+          <button class="tab" data-tab="kyc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
+            </svg>
+            <span>KYC</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Insight</div>
+          <button class="tab" data-tab="reports">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
+            </svg>
+            <span>Reports</span>
+          </button>
+          <button class="tab" data-tab="audit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>
+            </svg>
+            <span>Audit</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Setup</div>
+          <button class="tab" data-tab="entities">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="15" y2="14"/><line x1="9" y1="18" x2="15" y2="18"/>
+            </svg>
+            <span>Entities</span>
+          </button>
+          <button class="tab" data-tab="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Ops &amp; Settings</span>
+          </button>
+        </div>
+      </nav>
+
+      <div class="user-chip" id="user-chip" hidden>
+        <button id="btn-theme-toggle" class="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">
+          <svg class="icon-sun"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+        <div class="user-meta" id="user-meta-clickable" title="Change password">
+          <div class="who" id="user-chip-name"></div>
+          <div class="role" id="user-chip-role"></div>
+        </div>
+        <button id="btn-logout">Sign out</button>
+      </div>
+    </aside>
+
+    <main>
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="panel">
+      <header class="page-head">
+        <h1>Dashboard</h1>
+        <p class="muted">Live snapshot across all entities — <span id="dash-today"></span></p>
+      </header>
+
+      <div class="quick-actions">
+        <button data-quick="invoice">+ New invoice</button>
+        <button data-quick="bill">+ Record a bill</button>
+        <button data-quick="contact">+ Add contact</button>
+        <button data-quick="contract">+ Add contract</button>
+      </div>
+
+      <div class="dash-chips">
+        <button class="dash-chip" data-chip="overdue">Overdue</button>
+        <button class="dash-chip" data-chip="due-week">Due this week</button>
+        <button class="dash-chip" data-chip="paid-month">Paid this month</button>
+        <button class="dash-chip" data-chip="open-ar">All open AR</button>
+        <button class="dash-chip" data-chip="open-ap">All open AP</button>
+      </div>
+
+      <div id="dash-consolidated" class="consolidated-card" hidden></div>
+      <div id="dash-hero" class="hero-grid"></div>
+
+      <div id="dash-trend" class="trend-card" hidden>
+        <div class="trend-head">
+          <h3>12-month revenue &amp; expenses</h3>
+          <div class="trend-legend">
+            <span><span class="sw rev"></span>Revenue</span>
+            <span><span class="sw exp"></span>Expenses</span>
+          </div>
+        </div>
+        <div id="dash-trend-charts"></div>
+      </div>
+
+      <div class="dash-counters" id="dash-counters"></div>
+      <div class="dash-grid">
+        <div class="dash-card">
+          <h3>Outstanding receivables (AR)</h3>
+          <div id="dash-ar" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Outstanding payables (AP)</h3>
+          <div id="dash-ap" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Overdue invoices &amp; bills</h3>
+          <div id="dash-overdue" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Contracts expiring (≤60 days)</h3>
+          <div id="dash-contracts" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>KYC refresh due (≤90 days)</h3>
+          <div id="dash-kyc" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Bank reconciliation</h3>
+          <div id="dash-bank" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Top customers (last 12m)</h3>
+          <div id="dash-top-customers" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Top suppliers (last 12m)</h3>
+          <div id="dash-top-suppliers" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Upcoming tasks</h3>
+          <div id="dash-tasks" class="dash-list"></div>
+        </div>
+        <div class="dash-card">
+          <h3>Recent items</h3>
+          <div id="dash-recent" class="dash-list"></div>
+        </div>
+        <div class="dash-card dash-card-wide">
+          <h3>Recent activity</h3>
+          <div id="dash-activity" class="dash-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACTS -->
+    <section id="tab-contacts" class="panel" hidden>
+      <header class="page-head">
+        <h1>Contacts</h1>
+        <p class="muted">People and organisations linked to your entities — customers, suppliers, banks, advisors.</p>
+      </header>
+      <div class="toolbar">
+        <input id="contact-search" type="search" placeholder="Search contacts…" />
+        <select id="contact-filter-type">
+          <option value="">All types</option>
+          <option value="customer">Customer</option>
+          <option value="supplier">Supplier</option>
+          <option value="bank">Bank</option>
+          <option value="advisor">Advisor</option>
+          <option value="intercompany">Intercompany</option>
+          <option value="regulator">Regulator</option>
+          <option value="individual">Individual</option>
+          <option value="other">Other</option>
+        </select>
+        <select id="contact-filter-entity"><option value="">All entities</option></select>
+        <label class="show-archived"><input type="checkbox" id="contact-show-archived" /> Show archived</label>
+        <select id="contact-saved-views" style="min-width:140px"><option value="">Saved views…</option></select>
+        <button id="btn-save-contact-view">Save view</button>
+        <button id="btn-contacts-export-csv">Export CSV</button>
+        <button id="btn-contact-import" title="Bulk import contacts from CSV">Import CSV</button>
+        <input id="contact-import-file" type="file" accept=".csv,text/csv" hidden />
+        <button id="btn-new-contact" class="primary">+ New contact</button>
+      </div>
+
+      <div id="contact-tag-chips" class="tag-chips"></div>
+      <table id="contacts-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Entities</th>
+            <th>Jurisdiction</th>
+            <th>Tax ID</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="contacts-empty" class="empty" hidden>
+        <strong>No contacts yet</strong>
+        <span class="muted">Add the people and companies you do business with.</span>
+        <button class="primary" onclick="document.getElementById('btn-new-contact').click()">+ Add first contact</button>
+      </div>
+    </section>
+
+    <!-- TASKS -->
+    <section id="tab-tasks" class="panel" hidden>
+      <header class="page-head">
+        <h1>Tasks</h1>
+        <p class="muted">Lightweight to-dos with due dates. Optionally link a task to any record.</p>
+      </header>
+      <div class="toolbar">
+        <select id="tasks-filter-status">
+          <option value="">All</option>
+          <option value="open" selected>Open</option>
+          <option value="done">Done</option>
+        </select>
+        <button id="btn-new-task" class="primary">+ New task</button>
+      </div>
+      <table id="tasks-table">
+        <thead><tr><th></th><th>Title</th><th>Due</th><th>Status</th><th>Linked to</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="tasks-empty" class="empty" hidden>
+        <strong>No tasks yet</strong>
+        <span class="muted">Track follow-ups, filing dates, KYC refreshes.</span>
+      </p>
+    </section>
+
+    <!-- INVOICES -->
+    <section id="tab-invoices" class="panel" hidden>
+      <header class="page-head">
+        <h1>Invoices &amp; Bills</h1>
+        <p class="muted">Sales you issue and purchases you owe. Filter by direction to see one side.</p>
+      </header>
+      <div class="toolbar">
+        <input id="invoice-search" type="search" placeholder="Search invoices &amp; bills…" />
+        <select id="invoice-filter-entity"><option value="">All entities</option></select>
+        <select id="invoice-filter-direction">
+          <option value="">Sales + Bills</option>
+          <option value="sales">Sales (AR)</option>
+          <option value="purchase">Bills (AP)</option>
+        </select>
+        <select id="invoice-filter-status">
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="paid">Paid</option>
+          <option value="void">Void</option>
+        </select>
+        <label class="show-archived"><input type="checkbox" id="invoice-show-void" /> Show void</label>
+        <select id="invoice-saved-views" style="min-width:140px"><option value="">Saved views…</option></select>
+        <button id="btn-save-view" title="Save current filters as a view">Save view</button>
+        <button id="btn-invoices-export-csv">Export CSV</button>
+        <button id="btn-bulk-import" title="Bulk import invoices from CSV">Import CSV</button>
+        <input id="bulk-import-file" type="file" accept=".csv,text/csv" hidden />
+        <button id="btn-new-bill">+ New bill</button>
+        <button id="btn-new-invoice" class="primary">+ New invoice</button>
+      </div>
+      <div id="invoices-bulk-bar" class="bulk-bar" hidden>
+        <span id="bulk-count" class="muted"></span>
+        <button id="bulk-email">Email selected</button>
+        <button id="bulk-void" class="danger">Void selected</button>
+      </div>
+      <table id="invoices-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="invoices-select-all" title="Select all" /></th>
+            <th>Number</th>
+            <th>Issued</th>
+            <th>Entity</th>
+            <th>Customer</th>
+            <th class="num">Total</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="invoices-empty" class="empty" hidden>
+        <strong>No invoices or bills yet</strong>
+        <span class="muted">Issue an invoice to a customer or record a supplier bill.</span>
+        <div style="display:flex; gap:8px">
+          <button onclick="document.getElementById('btn-new-bill').click()">+ Record a bill</button>
+          <button class="primary" onclick="document.getElementById('btn-new-invoice').click()">+ Issue invoice</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTRACTS -->
+    <section id="tab-contracts" class="panel" hidden>
+      <header class="page-head">
+        <h1>Contracts</h1>
+        <p class="muted">Master agreements, NDAs, SOWs and leases — with attached files and renewal alerts.</p>
+      </header>
+      <div class="toolbar">
+        <input id="contract-search" type="search" placeholder="Search contracts…" />
+        <select id="contract-filter-entity"><option value="">All entities</option></select>
+        <select id="contract-filter-status">
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+          <option value="terminated">Terminated</option>
+        </select>
+        <label class="show-archived"><input type="checkbox" id="contract-show-terminated" /> Show terminated</label>
+        <select id="contract-saved-views" style="min-width:140px"><option value="">Saved views…</option></select>
+        <button id="btn-save-contract-view">Save view</button>
+        <button onclick="window.open('/api/export/contracts.csv')">Export CSV</button>
+        <button id="btn-new-contract" class="primary">+ New contract</button>
+      </div>
+      <table id="contracts-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Entity</th>
+            <th>Counterparty</th>
+            <th>Starts</th>
+            <th>Ends</th>
+            <th>File</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="contracts-empty" class="empty" hidden>
+        <strong>No contracts yet</strong>
+        <span class="muted">Register your MSAs, SOWs, NDAs and leases here.</span>
+        <button class="primary" onclick="document.getElementById('btn-new-contract').click()">+ Add first contract</button>
+      </div>
+    </section>
+
+    <!-- KYC -->
+    <section id="tab-kyc" class="panel" hidden>
+      <header class="page-head">
+        <h1>KYC</h1>
+        <p class="muted">Know-your-counterparty dossiers, risk tiers, documents and refresh schedule.</p>
+      </header>
+      <div class="toolbar">
+        <input id="kyc-search" type="search" placeholder="Search KYC records…" />
+        <select id="kyc-filter-status">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_progress">In progress</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="expired">Expired</option>
+        </select>
+        <select id="kyc-filter-risk">
+          <option value="">All risk tiers</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+        <button onclick="window.open('/api/export/kyc.csv')">Export CSV</button>
+        <button id="btn-new-kyc" class="primary">+ New KYC record</button>
+      </div>
+      <table id="kyc-table">
+        <thead>
+          <tr>
+            <th>Contact</th>
+            <th>Type</th>
+            <th>Risk</th>
+            <th>Status</th>
+            <th>Verified</th>
+            <th>Refresh due</th>
+            <th>Docs</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="kyc-empty" class="empty" hidden>
+        <strong>No KYC records yet</strong>
+        <span class="muted">Start a dossier per counterparty — risk tier, documents, refresh schedule.</span>
+        <button class="primary" onclick="document.getElementById('btn-new-kyc').click()">+ Start first dossier</button>
+      </div>
+    </section>
+
+    <!-- BANKS -->
+    <section id="tab-banks" class="panel" hidden>
+      <header class="page-head">
+        <h1>Banks</h1>
+        <p class="muted">Bank accounts per entity. Import CSV statements and reconcile to invoices.</p>
+      </header>
+      <div class="bank-layout">
+        <aside class="bank-accounts">
+          <div class="bank-accounts-head">
+            <h3>Accounts</h3>
+            <button id="btn-new-bank-account" class="primary">+ Account</button>
+          </div>
+          <ul id="bank-accounts-list"></ul>
+        </aside>
+        <div class="bank-transactions">
+          <div class="toolbar">
+            <strong id="bank-current-account">Select an account →</strong>
+            <button id="btn-import-csv">Import CSV</button>
+            <input id="csv-file-input" type="file" accept=".csv,text/csv" hidden />
+          </div>
+          <table id="bank-tx-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Reference</th>
+                <th class="num">Amount</th>
+                <th>Matched invoice</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div id="bank-tx-empty" class="empty" hidden>
+            <strong>No transactions on this account</strong>
+            <span class="muted">Import a CSV statement to begin reconciling.</span>
+            <button class="primary" onclick="document.getElementById('btn-import-csv').click()">Import CSV</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLOWS -->
+    <section id="tab-flows" class="panel" hidden>
+      <header class="page-head">
+        <h1>Money Flows</h1>
+        <p class="muted">Who paid whom — intercompany transfers, capital injections, dividends and external flows.</p>
+      </header>
+      <div class="toolbar">
+        <span class="muted">Aggregated by entity pair below.</span>
+        <button onclick="window.open('/api/export/flows.csv')" style="margin-left:auto">Export CSV</button>
+        <button id="btn-new-flow" class="primary">+ New flow</button>
+      </div>
+      <div id="flows-summary" class="flows-summary"></div>
+      <table id="flows-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Kind</th>
+            <th class="num">Amount</th>
+            <th>Reference</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="flows-empty" class="empty" hidden>
+        <strong>No flows recorded yet</strong>
+        <span class="muted">Capture intercompany transfers, capital movements and dividend repatriations.</span>
+        <button class="primary" onclick="document.getElementById('btn-new-flow').click()">+ Record first flow</button>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section id="tab-reports" class="panel" hidden>
+      <div class="dash-head">
+        <h2>Reports</h2>
+        <span class="muted">Snapshot in each entity's base currency</span>
+      </div>
+      <div id="reports-pl" class="dash-grid"></div>
+      <h3 style="margin-top:24px">Aging — receivables (AR)</h3>
+      <table id="ar-aging-table">
+        <thead><tr><th>Entity</th><th>Currency</th><th class="num">Current</th><th class="num">1–30d</th><th class="num">31–60d</th><th class="num">61–90d</th><th class="num">90+d</th><th class="num">Total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h3 style="margin-top:24px">Aging — payables (AP)</h3>
+      <table id="ap-aging-table">
+        <thead><tr><th>Entity</th><th>Currency</th><th class="num">Current</th><th class="num">1–30d</th><th class="num">31–60d</th><th class="num">61–90d</th><th class="num">90+d</th><th class="num">Total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3 style="margin-top:24px">Quarter-over-quarter</h3>
+      <p class="muted">Current quarter vs same quarter last year, per entity.</p>
+      <table id="qoq-table">
+        <thead><tr><th>Entity</th><th>Current Q</th><th class="num">Revenue</th><th class="num">vs LY</th><th class="num">Expenses</th><th class="num">vs LY</th><th class="num">Net</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3 style="margin-top:24px">VAT collected (by quarter)</h3>
+      <p class="muted">Tax totals on paid + sent invoices. Useful for VAT201 / equivalent filing.</p>
+      <table id="vat-report-table">
+        <thead><tr><th>Entity</th><th>Period</th><th>Ccy</th><th class="num">Sales net</th><th class="num">Tax collected</th><th class="num">Purchases net</th><th class="num">Tax paid</th><th class="num">Net VAT due</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3 style="margin-top:24px">Top expense categories</h3>
+      <p class="muted">Money-flow expenses (last 365 days) by category, in USD.</p>
+      <table id="exp-cat-table">
+        <thead><tr><th>Category</th><th class="num">Entries</th><th class="num">Total (USD)</th><th class="num">% of total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="panel" hidden>
+      <header class="page-head">
+        <h1>Ops &amp; Settings</h1>
+        <p class="muted">Entities, jurisdictions, API credentials, backups, system info.</p>
+      </header>
+
+      <nav class="subtabs">
+        <button class="subtab active" data-sub="general">General</button>
+        <button class="subtab" data-sub="users">Users</button>
+        <button class="subtab" data-sub="currencies">Currencies</button>
+        <button class="subtab" data-sub="credentials">API Vault</button>
+        <button class="subtab" data-sub="sync">Sync History</button>
+        <button class="subtab" data-sub="ops">Backup &amp; System</button>
+      </nav>
+
+      <!-- GENERAL: Entities + Jurisdictions -->
+      <div class="subpanel" data-sub="general">
+        <h3>Entities</h3>
+        <table id="settings-entities-table">
+          <thead><tr><th>Code</th><th>Legal name</th><th>Jurisdiction</th><th>Tax ID</th><th>Currency</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <button id="btn-new-entity" style="margin-top:8px">+ New entity</button>
+
+        <h3 style="margin-top:24px">Jurisdictions</h3>
+        <table id="settings-juris-table">
+          <thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Tax label</th><th class="num">VAT</th><th>Footer</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- USERS -->
+      <div class="subpanel" data-sub="users" hidden>
+        <div class="toolbar">
+          <strong>Users</strong>
+          <span class="muted">Admins manage everyone, users edit data, read-only can only view.</span>
+          <button id="btn-new-user" class="primary" style="margin-left:auto">+ Add user</button>
+        </div>
+        <table id="users-table">
+          <thead>
+            <tr><th>Email</th><th>Display name</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- CURRENCIES -->
+      <div class="subpanel" data-sub="currencies" hidden>
+        <div class="toolbar">
+          <strong>Reporting currency</strong>
+          <select id="reporting-currency-select" style="min-width:100px"></select>
+          <span class="muted">— used for the consolidated rollup on the dashboard.</span>
+          <button id="btn-fx-refresh" style="margin-left:auto">Refresh from ECB</button>
+        </div>
+        <h3 style="margin-top:18px">FX rates (rate × 1 unit = N USD)</h3>
+        <p class="muted">Rates are manual by default. Edit any cell, then click Save. Per-entity local currency stays unchanged.</p>
+        <table id="fx-rates-table">
+          <thead><tr><th>Currency</th><th class="num">Rate to USD</th><th>Source</th><th>Updated</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="toolbar" style="margin-top:12px">
+          <input id="fx-new-code" placeholder="New currency code (e.g. JPY)" maxlength="3" style="width:180px;text-transform:uppercase" />
+          <input id="fx-new-rate" placeholder="rate to USD" type="number" step="0.000001" style="width:140px" />
+          <button id="fx-new-add">+ Add rate</button>
+        </div>
+      </div>
+
+      <!-- CREDENTIALS -->
+      <div class="subpanel" data-sub="credentials" hidden>
+        <div class="toolbar">
+          <strong>API credentials vault</strong>
+          <span class="muted">Stored locally in your SQLite — secrets shown masked.</span>
+          <button id="btn-new-credential" class="primary" style="margin-left:auto">+ Add credential</button>
+        </div>
+        <table id="credentials-table">
+          <thead>
+            <tr><th>Provider</th><th>Label</th><th>Linked</th><th>Env</th><th>Client ID</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <h3 style="margin-top:24px">Calendar subscription</h3>
+        <p class="muted">Generate a long-lived URL that calendar apps (Apple, Google, Outlook) can subscribe to.</p>
+        <table id="caltokens-table">
+          <thead><tr><th>Label</th><th>URL</th><th>Last used</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="toolbar" style="margin-top:10px">
+          <input id="caltoken-label" placeholder="Label (e.g. 'Apple Calendar')" style="flex:1" />
+          <button id="caltoken-add" class="primary">+ Mint URL</button>
+        </div>
+
+        <h3 style="margin-top:24px">Outbound webhooks</h3>
+        <p class="muted">POST signed JSON to your URL on events. HMAC-SHA256 in X-Carbon-Signature header.</p>
+        <table id="webhooks-table">
+          <thead><tr><th>URL</th><th>Events</th><th>Active</th><th>Deliveries</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="toolbar" style="margin-top:10px">
+          <input id="webhook-url" placeholder="https://example.com/webhook" style="flex:1" />
+          <input id="webhook-events" placeholder="invoice.paid,invoice.created or *" style="flex:1" />
+          <button id="webhook-add" class="primary">+ Add webhook</button>
+        </div>
+
+        <h3 style="margin-top:24px">Bearer API tokens</h3>
+        <p class="muted">Long-lived tokens for scripts / Zapier / external integrations. Add the Authorization: Bearer header. Read-only by default.</p>
+        <table id="tokens-table">
+          <thead><tr><th>Label</th><th>Scope</th><th>Last used</th><th>Created</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="toolbar" style="margin-top:10px">
+          <input id="token-new-label" placeholder="Label (e.g. zapier-prod)" style="flex:1" />
+          <select id="token-new-scope"><option value="read">Read-only</option><option value="write">Read + Write</option></select>
+          <button id="token-new-add" class="primary">+ Mint token</button>
+        </div>
+
+        <p id="credentials-empty" class="empty" hidden>
+          <strong>No API credentials yet</strong>
+          <span class="muted">Add an Aspire client_id + secret to enable live bank sync.</span>
+          <button class="primary" onclick="document.getElementById('btn-new-credential').click()">+ Add first credential</button>
+        </p>
+      </div>
+
+      <!-- SYNC HISTORY -->
+      <div class="subpanel" data-sub="sync" hidden>
+        <div class="toolbar">
+          <strong>Sync history</strong>
+          <span class="muted">Most recent 100 sync runs across all providers.</span>
+        </div>
+        <table id="sync-runs-table">
+          <thead>
+            <tr><th>Started</th><th>Provider</th><th>Account</th><th>Status</th><th class="num">Inserted</th><th class="num">Skipped</th><th>Error</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="sync-empty" class="empty" hidden>
+          <strong>No sync runs yet</strong>
+          <span class="muted">Hit "Sync from Aspire" on a bank account to trigger one.</span>
+        </p>
+      </div>
+
+      <!-- BACKUP & SYSTEM -->
+      <div class="subpanel" data-sub="ops" hidden>
+        <h3>Backup</h3>
+        <p class="muted">Download a tar.gz snapshot of the SQLite DB and every attached document. Nightly auto-backups also keep the last 30 in the backups folder.</p>
+        <button id="btn-backup" class="primary">Download backup now</button>
+        <button id="btn-backup-encrypted">Download encrypted backup…</button>
+        <button id="btn-run-nightly">Run nightly backup now</button>
+        <div id="backup-list" style="margin-top:12px"></div>
+
+        <h3 style="margin-top:24px">Calendar feed (.ics)</h3>
+        <p class="muted">Download a calendar file with all invoice due dates, contract expiries and KYC refresh dates. Drag into Apple Calendar / Outlook.</p>
+        <button id="btn-calendar-ics">Download .ics calendar</button>
+
+        <h3 style="margin-top:24px">Autostart on login (macOS)</h3>
+        <p class="muted">Download a launchd plist and place it in ~/Library/LaunchAgents/ — Carbon will start with macOS.</p>
+        <button id="btn-launchd">Download launchd plist</button>
+
+        <h3 style="margin-top:24px">Restore</h3>
+        <p class="muted">Upload a backup tar.gz. Applies on next server restart; current data is preserved as data-pre-restore-&lt;timestamp&gt;.</p>
+        <input id="restore-input" type="file" accept=".gz,.tar.gz,application/gzip" />
+        <button id="btn-restore" class="danger" style="margin-left:8px">Queue restore</button>
+
+        <h3 style="margin-top:24px">System</h3>
+        <div id="system-info" class="dash-grid"></div>
+      </div>
+    </section>
+
+    <!-- ENTITIES -->
+    <section id="tab-entities" class="panel" hidden>
+      <header class="page-head">
+        <h1>Entities</h1>
+        <p class="muted">The legal entities under management. Edit details under Settings.</p>
+      </header>
+      <table id="entities-table">
+        <thead>
+          <tr><th>Code</th><th>Legal name</th><th>Jurisdiction</th><th>Currency</th><th>Tax ID</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- AUDIT -->
+    <section id="tab-audit" class="panel" hidden>
+      <header class="page-head">
+        <h1>Audit log</h1>
+        <p class="muted">Every insert, update and delete is recorded here. Append-only.</p>
+      </header>
+      <div class="toolbar">
+        <select id="audit-filter-table"><option value="">All tables</option></select>
+        <select id="audit-filter-action"><option value="">All actions</option></select>
+        <select id="audit-filter-actor"><option value="">All actors</option></select>
+        <input id="audit-filter-since" type="date" title="From" />
+        <input id="audit-filter-until" type="date" title="To" />
+        <button id="audit-filter-clear">Clear</button>
+        <button onclick="window.open('/api/export/audit.csv')" style="margin-left:auto">Export CSV</button>
+      </div>
+      <table id="audit-table">
+        <thead>
+          <tr><th>When</th><th>Table</th><th>Row</th><th>Action</th><th>Actor</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    </main>
+  </div>
+
+  <!-- contact dialog -->
+  <dialog id="contact-dialog">
+    <form id="contact-form" method="dialog">
+      <h2 id="contact-form-title">New contact</h2>
+
+      <div class="grid">
+        <label>Display name *
+          <input name="display_name" required />
+        </label>
+        <label>Type *
+          <select name="contact_type" required>
+            <option value="customer">Customer</option>
+            <option value="supplier">Supplier</option>
+            <option value="bank">Bank</option>
+            <option value="advisor">Advisor</option>
+            <option value="intercompany">Intercompany</option>
+            <option value="regulator">Regulator</option>
+            <option value="individual">Individual</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Legal name
+          <input name="legal_name" />
+        </label>
+        <label>Jurisdiction
+          <div class="combobox" data-combobox="jurisdiction">
+            <input type="text" class="combobox-input" placeholder="Search country…" autocomplete="off" />
+            <input type="hidden" name="jurisdiction_code" />
+            <div class="combobox-list" hidden></div>
+          </div>
+        </label>
+        <label>Tax ID (BR/TRN/VAT)
+          <div class="taxid-row">
+            <input name="tax_id" />
+            <button type="button" class="taxid-validate" data-context="contact">Validate</button>
+          </div>
+          <div class="taxid-result muted" data-context="contact" hidden></div>
+        </label>
+        <label>Default currency
+          <input name="currency_default" placeholder="HKD / AED / USD / EUR" maxlength="3" />
+        </label>
+        <label>Email
+          <input name="email" type="email" />
+        </label>
+        <label>Phone
+          <input name="phone" />
+        </label>
+        <label>Website
+          <input name="website" />
+        </label>
+        <label>Payment terms (days)
+          <input name="payment_terms_days" type="number" min="0" />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Address</legend>
+        <div class="grid">
+          <label>Address line 1<input name="address_line1" /></label>
+          <label>Address line 2<input name="address_line2" /></label>
+          <label>City<input name="city" /></label>
+          <label>Postal code<input name="postal_code" /></label>
+          <label>Country<input name="country" /></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Linked entities</legend>
+        <div id="entity-checkboxes" class="checkrow"></div>
+      </fieldset>
+
+      <label>Tags (comma-separated)
+        <input name="tags" />
+      </label>
+
+      <label>Notes
+        <textarea name="notes" rows="3"></textarea>
+      </label>
+
+      <label>Status
+        <select name="status">
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+        </select>
+      </label>
+
+      <div class="actions">
+        <button type="button" id="contact-cancel">Cancel</button>
+        <button type="button" id="contact-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- invoice dialog -->
+  <dialog id="invoice-dialog">
+    <form id="invoice-form" method="dialog">
+      <h2 id="invoice-form-title">New invoice</h2>
+
+      <div class="grid">
+        <label>Direction *
+          <select name="direction" id="inv-direction" required>
+            <option value="sales">Sales (you charge)</option>
+            <option value="purchase">Bill (you owe)</option>
+          </select>
+        </label>
+        <label>External number
+          <input name="external_number" id="inv-external-number" placeholder="supplier's number" />
+        </label>
+        <label>Entity *
+          <select name="entity_id" id="inv-entity" required></select>
+        </label>
+        <label id="inv-contact-label">Customer *
+          <select name="contact_id" id="inv-contact" required></select>
+        </label>
+        <label>Issue date *
+          <input name="issue_date" type="date" required />
+        </label>
+        <label>Due date
+          <input name="due_date" type="date" />
+        </label>
+        <label>Currency *
+          <input name="currency" maxlength="3" placeholder="HKD / AED / USD" required />
+        </label>
+        <label>FX to base
+          <input name="fx_rate_to_base" type="number" step="0.0001" min="0" value="1" />
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="paid">Paid</option>
+            <option value="void">Void</option>
+          </select>
+        </label>
+        <label>PO reference
+          <input name="po_reference" />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Line items</legend>
+        <table class="line-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Unit</th>
+              <th class="num">Tax %</th>
+              <th class="num">Line total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="inv-lines"></tbody>
+        </table>
+        <button type="button" id="inv-add-line">+ Add line</button>
+      </fieldset>
+
+      <div class="totals-bar">
+        <div>Subtotal: <span id="inv-subtotal">0.00</span></div>
+        <div>Tax: <span id="inv-tax">0.00</span></div>
+        <div class="grand">Total: <span id="inv-total">0.00</span></div>
+      </div>
+
+      <fieldset>
+        <legend>Recurrence</legend>
+        <div class="grid">
+          <label>Repeat
+            <select name="recurrence_kind">
+              <option value="">— none —</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </label>
+          <label>Next run<input name="recurrence_next_run" type="date" /></label>
+          <label>Active
+            <select name="recurrence_active">
+              <option value="0">No</option>
+              <option value="1">Yes</option>
+            </select>
+          </label>
+        </div>
+        <p class="muted" style="font-size:11px">When active, a new draft invoice is auto-generated on the next-run date.</p>
+      </fieldset>
+
+      <fieldset id="invoice-payments-section" hidden>
+        <legend>Payments <span id="inv-pay-summary" class="muted"></span></legend>
+        <div id="inv-payments-list"></div>
+        <div class="kyc-upload" style="margin-top:8px">
+          <input id="inv-pay-amount" type="number" step="0.01" placeholder="Amount" style="width:120px" />
+          <input id="inv-pay-date"   type="date" />
+          <input id="inv-pay-method" placeholder="Method (bank, cash…)" style="flex:1" />
+          <button type="button" id="inv-pay-add">Add payment</button>
+        </div>
+      </fieldset>
+
+      <label>Notes
+        <textarea name="notes" rows="3"></textarea>
+      </label>
+
+      <fieldset id="invoice-notes-section" hidden>
+        <legend>Comments</legend>
+        <div id="inv-notes-list"></div>
+        <div style="display:flex; gap:6px; margin-top:6px">
+          <input id="inv-note-input" placeholder="Add a comment…" style="flex:1" />
+          <button type="button" id="inv-note-add">Post</button>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="button" id="invoice-cancel">Cancel</button>
+        <button type="button" id="invoice-email" hidden>Email</button>
+        <button type="button" id="invoice-print" hidden>Print view</button>
+        <button type="button" id="invoice-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- contract dialog -->
+  <dialog id="contract-dialog">
+    <form id="contract-form" method="dialog">
+      <h2 id="contract-form-title">New contract</h2>
+      <div class="grid">
+        <label>Title *<input name="title" required /></label>
+        <label>Type
+          <select name="contract_type">
+            <option value="">—</option>
+            <option>MSA</option><option>SOW</option><option>NDA</option>
+            <option>Lease</option><option>Service</option><option>License</option>
+            <option>Employment</option><option>Other</option>
+          </select>
+        </label>
+        <label>Entity *<select name="entity_id" id="ct-entity" required></select></label>
+        <label>Counterparty *<select name="counterparty_id" id="ct-counterparty" required></select></label>
+        <label>Reference<input name="reference" /></label>
+        <label>Status
+          <select name="status">
+            <option value="draft">Draft</option>
+            <option value="active" selected>Active</option>
+            <option value="expired">Expired</option>
+            <option value="terminated">Terminated</option>
+          </select>
+        </label>
+        <label>Start date<input name="start_date" type="date" /></label>
+        <label>End date<input name="end_date" type="date" /></label>
+        <label>Auto-renew
+          <select name="auto_renew">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </label>
+        <label>Renewal notice (days)<input name="renewal_notice_days" type="number" min="0" /></label>
+        <label>Value amount<input name="value_amount" type="number" step="0.01" /></label>
+        <label>Value currency<input name="value_currency" maxlength="3" /></label>
+      </div>
+      <fieldset>
+        <legend>Attached file</legend>
+        <div id="contract-file-info" class="muted">No file attached.</div>
+        <input id="contract-file-input" type="file" />
+        <div id="contract-file-versions" class="contract-versions"></div>
+      </fieldset>
+      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <div class="actions">
+        <button type="button" id="contract-cancel">Cancel</button>
+        <button type="button" id="contract-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- KYC dialog -->
+  <dialog id="kyc-dialog">
+    <form id="kyc-form" method="dialog">
+      <h2 id="kyc-form-title">New KYC record</h2>
+      <div class="grid">
+        <label>Contact *<select name="contact_id" id="kyc-contact" required></select></label>
+        <label>Risk tier
+          <select name="risk_tier">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="pending" selected>Pending</option>
+            <option value="in_progress">In progress</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="expired">Expired</option>
+          </select>
+        </label>
+        <label>Verified date<input name="verified_at" type="date" /></label>
+        <label>Refresh due<input name="refresh_due" type="date" /></label>
+        <label>PEP check
+          <select name="pep_check"><option value="0">No</option><option value="1">Yes</option></select>
+        </label>
+        <label>Sanctions check
+          <select name="sanctions_check"><option value="0">No</option><option value="1">Yes</option></select>
+        </label>
+      </div>
+      <label>Source of funds<textarea name="source_of_funds" rows="2"></textarea></label>
+      <label>Beneficial owners<textarea name="beneficial_owners" rows="2" placeholder="One per line"></textarea></label>
+      <fieldset>
+        <legend>Documents</legend>
+        <div id="kyc-docs-list"></div>
+        <div class="kyc-upload">
+          <select id="kyc-doc-type">
+            <option value="passport">Passport</option>
+            <option value="address_proof">Address proof</option>
+            <option value="register_extract">Register extract</option>
+            <option value="UBO">UBO declaration</option>
+            <option value="financials">Financial statements</option>
+            <option value="other">Other</option>
+          </select>
+          <input id="kyc-doc-input" type="file" />
+        </div>
+      </fieldset>
+      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <div class="actions">
+        <button type="button" id="kyc-cancel">Cancel</button>
+        <button type="button" id="kyc-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bank account dialog -->
+  <dialog id="bank-acct-dialog">
+    <form id="bank-acct-form" method="dialog">
+      <h2 id="bank-acct-form-title">New bank account</h2>
+      <div class="grid">
+        <label>Entity *<select name="entity_id" id="ba-entity" required></select></label>
+        <label>Bank name *<input name="bank_name" required /></label>
+        <label>Account label *<input name="account_label" placeholder="e.g. HKD Operating" required /></label>
+        <label>Account number<input name="account_number" /></label>
+        <label>IBAN<input name="iban" /></label>
+        <label>SWIFT/BIC<input name="swift_bic" /></label>
+        <label>Currency *<input name="currency" maxlength="3" required /></label>
+        <label>Opening balance<input name="opening_balance" type="number" step="0.01" value="0" /></label>
+        <label>Provider
+          <select name="provider">
+            <option value="csv">CSV import only</option>
+            <option value="aspire">Aspire (live sync)</option>
+            <option value="manual">Manual entry</option>
+          </select>
+        </label>
+        <label>Linked credential
+          <select name="credential_id" id="ba-credential"><option value="">— none —</option></select>
+        </label>
+      </div>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+      <div class="actions">
+        <button type="button" id="bank-acct-cancel">Cancel</button>
+        <button type="button" id="bank-acct-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Flow dialog -->
+  <dialog id="flow-dialog">
+    <form id="flow-form" method="dialog">
+      <h2 id="flow-form-title">New money flow</h2>
+      <div class="grid">
+        <label>Date *<input name="flow_date" type="date" required /></label>
+        <label>Kind
+          <select name="kind">
+            <option value="transfer" selected>Transfer</option>
+            <option value="invoice">Invoice payment</option>
+            <option value="loan">Loan</option>
+            <option value="dividend">Dividend</option>
+            <option value="capital">Capital injection</option>
+            <option value="expense">Expense</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>From entity<select name="from_entity_id" id="flow-from-e"><option value="">—</option></select></label>
+        <label>From contact<select name="from_contact_id" id="flow-from-c"><option value="">—</option></select></label>
+        <label>To entity<select name="to_entity_id" id="flow-to-e"><option value="">—</option></select></label>
+        <label>To contact<select name="to_contact_id" id="flow-to-c"><option value="">—</option></select></label>
+        <label>Amount *<input name="amount" type="number" step="0.01" required /></label>
+        <label>Currency *<input name="currency" maxlength="3" required /></label>
+        <label>FX to USD<input name="fx_rate_to_usd" type="number" step="0.0001" value="1" /></label>
+        <label>Reference<input name="reference" /></label>
+        <label>Category
+          <input name="category" list="flow-category-suggestions" placeholder="e.g. Software, Travel, Legal" />
+          <datalist id="flow-category-suggestions"></datalist>
+        </label>
+      </div>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+      <div class="actions">
+        <button type="button" id="flow-cancel">Cancel</button>
+        <button type="button" id="flow-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Entity dialog -->
+  <dialog id="entity-dialog">
+    <form id="entity-form" method="dialog">
+      <h2 id="entity-form-title">New entity</h2>
+      <div class="grid">
+        <label>Short code *<input name="code" maxlength="16" required /></label>
+        <label>Legal name *<input name="legal_name" required /></label>
+        <label>Jurisdiction *<select name="jurisdiction_code" id="ent-jur" required></select></label>
+        <label>Base currency *<input name="base_currency" maxlength="3" required /></label>
+        <label>Tax ID (BR/TRN)
+          <div class="taxid-row">
+            <input name="tax_id" />
+            <button type="button" class="taxid-validate" data-context="entity">Validate</button>
+          </div>
+          <div class="taxid-result muted" data-context="entity" hidden></div>
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="active">Active</option>
+            <option value="dormant">Dormant</option>
+            <option value="closed">Closed</option>
+          </select>
+        </label>
+      </div>
+      <label>Registered address<textarea name="registered_address" rows="3"></textarea></label>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+
+      <fieldset>
+        <legend>Invoice template</legend>
+        <label>Header text (above line items)<textarea name="invoice_header_text" rows="2" placeholder="e.g. Thank you for your business."></textarea></label>
+        <label>Footer text (below line items)<textarea name="invoice_footer_text" rows="3" placeholder="e.g. Payment terms 30d. Wire to HSBC HK acct …"></textarea></label>
+        <label>Default Notes for new invoices<textarea name="invoice_notes_default" rows="2"></textarea></label>
+      </fieldset>
+
+      <label>Period lock through (no edits to invoices on/before this date)
+        <input name="period_lock_through" type="date" />
+      </label>
+      <fieldset>
+        <legend>Logo (shown on PDF invoices)</legend>
+        <div id="entity-logo-preview" class="muted">No logo uploaded.</div>
+        <input id="entity-logo-input" type="file" accept="image/png,image/jpeg,image/svg+xml" style="margin-top:8px" />
+        <button type="button" id="entity-logo-delete" class="danger" style="margin-top:8px" hidden>Remove logo</button>
+      </fieldset>
+      <div class="actions">
+        <button type="button" id="entity-cancel">Cancel</button>
+        <button type="button" id="entity-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Jurisdiction dialog -->
+  <dialog id="juris-dialog">
+    <form id="juris-form" method="dialog">
+      <h2 id="juris-form-title">Edit jurisdiction</h2>
+      <div class="grid">
+        <label>Code<input name="code" readonly /></label>
+        <label>Name<input name="name" required /></label>
+        <label>Default currency<input name="currency_default" maxlength="3" required /></label>
+        <label>Tax ID label<input name="tax_id_label" placeholder="BR / TRN / VAT" /></label>
+        <label>VAT rate (0–1)<input name="vat_default" type="number" step="0.001" min="0" max="1" /></label>
+        <label>Record retention (years)<input name="record_retention_years" type="number" min="0" /></label>
+      </div>
+      <label>Invoice footer<textarea name="invoice_footer" rows="2" placeholder="Use {tax_id} as a placeholder"></textarea></label>
+      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <div class="actions">
+        <button type="button" id="juris-cancel">Cancel</button>
+        <button type="button" id="juris-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Credential dialog -->
+  <dialog id="credential-dialog">
+    <form id="credential-form" method="dialog">
+      <h2 id="credential-form-title">Add API credential</h2>
+      <div class="grid">
+        <label>Provider *
+          <select name="provider" required>
+            <option value="aspire">Aspire (HK)</option>
+            <option value="wio">Wio (UAE)</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Label
+          <input name="label" placeholder="e.g. HWG Aspire main" />
+        </label>
+        <label>Entity
+          <select name="entity_id" id="cred-entity"><option value="">—</option></select>
+        </label>
+        <label>Bank account
+          <select name="bank_account_id" id="cred-account"><option value="">—</option></select>
+        </label>
+        <label>Client ID
+          <input name="client_id" />
+        </label>
+        <label>Client secret
+          <input name="client_secret" type="password" placeholder="leave blank to keep" />
+        </label>
+        <label>API key
+          <input name="api_key" type="password" placeholder="leave blank to keep" />
+        </label>
+        <label>Environment
+          <select name="environment">
+            <option value="sandbox" selected>Sandbox</option>
+            <option value="production">Production</option>
+          </select>
+        </label>
+        <label>Auto-resync (minutes)
+          <input name="sync_interval_minutes" type="number" min="0" step="5" value="0" placeholder="0 = manual only" />
+        </label>
+      </div>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+      <div class="actions">
+        <button type="button" id="credential-cancel">Cancel</button>
+        <button type="button" id="credential-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Task dialog -->
+  <dialog id="task-dialog">
+    <form id="task-form" method="dialog">
+      <h2 id="task-form-title">New task</h2>
+      <label>Title *<input name="title" required /></label>
+      <div class="grid">
+        <label>Due date<input name="due_date" type="date" /></label>
+        <label>Status
+          <select name="status">
+            <option value="open" selected>Open</option>
+            <option value="done">Done</option>
+          </select>
+        </label>
+      </div>
+      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <div class="actions">
+        <button type="button" id="task-cancel">Cancel</button>
+        <button type="button" id="task-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- CSV import preview dialog -->
+  <dialog id="csv-preview-dialog">
+    <form method="dialog">
+      <h2>CSV preview</h2>
+      <p class="muted" id="csv-preview-summary"></p>
+      <div id="csv-preview-table" style="overflow:auto;max-height:300px;font-size:11px;margin:0 22px"></div>
+      <div class="actions">
+        <button type="button" id="csv-preview-cancel">Cancel</button>
+        <button type="button" id="csv-preview-confirm" class="primary">Confirm import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Account / change password dialog -->
+  <dialog id="account-dialog">
+    <form id="account-form" method="dialog">
+      <h2>Change your password</h2>
+      <label>Current password<input name="current_password" type="password" required /></label>
+      <label>New password<input name="new_password" type="password" minlength="8" required /></label>
+      <label>Confirm new<input name="confirm_password" type="password" minlength="8" required /></label>
+      <p class="muted" style="font-size:11px">Other sessions will be signed out.</p>
+      <div class="actions">
+        <button type="button" id="account-cancel">Cancel</button>
+        <button type="button" id="account-save" class="primary">Update password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- User dialog -->
+  <dialog id="user-dialog">
+    <form id="user-form" method="dialog">
+      <h2 id="user-form-title">Add user</h2>
+      <div class="grid">
+        <label>Email *<input name="email" type="email" required /></label>
+        <label>Display name<input name="display_name" /></label>
+        <label>Role
+          <select name="role">
+            <option value="user" selected>User</option>
+            <option value="admin">Admin</option>
+            <option value="readonly">Read-only</option>
+          </select>
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="active" selected>Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+        <label>Password<input name="password" type="password" placeholder="Leave blank to keep" /></label>
+      </div>
+      <div class="actions">
+        <button type="button" id="user-cancel">Cancel</button>
+        <button type="button" id="user-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bank transaction edit dialog -->
+  <dialog id="bank-tx-dialog">
+    <form id="bank-tx-form" method="dialog">
+      <h2>Edit transaction</h2>
+      <div class="grid">
+        <label>Date *<input name="txn_date" type="date" required /></label>
+        <label>Amount *<input name="amount" type="number" step="0.01" required /></label>
+        <label>Currency *<input name="currency" maxlength="3" required /></label>
+        <label>Reference<input name="reference" /></label>
+        <label>Category
+          <select name="category">
+            <option value="">—</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+            <option value="transfer">Transfer</option>
+            <option value="fee">Fee</option>
+            <option value="fx">FX</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <label>Description<input name="description" /></label>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+      <div class="actions">
+        <button type="button" id="bank-tx-cancel">Cancel</button>
+        <button type="button" id="bank-tx-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <button id="notif-bell" class="notif-bell" aria-label="Notifications" title="Notifications">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+    </svg>
+    <span class="notif-count" id="notif-count" hidden>0</span>
+  </button>
+  <div class="notif-panel" id="notif-panel" hidden>
+    <div class="notif-head">
+      <strong>Notifications</strong>
+      <div>
+        <button id="notif-clear">Clear</button>
+        <button id="notif-close">×</button>
+      </div>
+    </div>
+    <ul id="notif-list"></ul>
+  </div>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Carbon — Setup</title>
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M 77.7 34 A 32 32 0 1 0 77.7 66' stroke='%231f8a52' stroke-width='16' fill='none' stroke-linecap='round'/></svg>" />
+  <script>
+    (function () {
+      var pref = localStorage.getItem('carbon.theme') || 'light';
+      if (pref === 'system') pref = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', pref);
+    })();
+  </script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#1f8a52" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="auth-shell">
+    <form id="setup-form" class="auth-card">
+      <div class="auth-brand">
+        <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 77.7 34 A 32 32 0 1 0 77.7 66" stroke="currentColor" stroke-width="14" fill="none" stroke-linecap="round"/>
+        </svg>
+        <strong>Carbon</strong>
+      </div>
+      <h1>Create your admin account</h1>
+      <p class="muted">First-run setup. This admin will manage other users from Settings.</p>
+
+      <label>Email
+        <input name="email" type="email" required autofocus />
+      </label>
+      <label>Display name
+        <input name="display_name" placeholder="Optional" />
+      </label>
+      <label>Password
+        <input name="password" type="password" minlength="8" required />
+        <small class="muted">8+ characters. Stored as a scrypt hash, never plaintext.</small>
+      </label>
+
+      <button type="submit" class="primary">Create admin &amp; sign in</button>
+      <p id="setup-error" class="auth-error" hidden></p>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('setup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      const errEl = document.getElementById('setup-error');
+      errEl.hidden = true;
+      try {
+        const r = await fetch('/api/auth/setup', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error || 'Setup failed');
+        window.location.href = '/';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

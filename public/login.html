@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Carbon — Sign in</title>
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M 77.7 34 A 32 32 0 1 0 77.7 66' stroke='%231f8a52' stroke-width='16' fill='none' stroke-linecap='round'/></svg>" />
+  <script>
+    (function () {
+      var pref = localStorage.getItem('carbon.theme') || 'light';
+      if (pref === 'system') pref = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', pref);
+    })();
+  </script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#1f8a52" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="auth-shell">
+    <form id="login-form" class="auth-card">
+      <div class="auth-brand">
+        <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 77.7 34 A 32 32 0 1 0 77.7 66" stroke="currentColor" stroke-width="14" fill="none" stroke-linecap="round"/>
+        </svg>
+        <strong>Carbon</strong>
+      </div>
+      <h1>Sign in</h1>
+
+      <label>Email
+        <input name="email" type="email" required autofocus />
+      </label>
+      <label>Password
+        <input name="password" type="password" required />
+      </label>
+
+      <button type="submit" class="primary">Sign in</button>
+      <p id="login-error" class="auth-error" hidden></p>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      const errEl = document.getElementById('login-error');
+      errEl.hidden = true;
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error || 'Login failed');
+        window.location.href = '/';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

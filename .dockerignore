@@ -1,0 +1,14 @@
+node_modules
+data
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.git
+.gitignore
+HANDOFF.md
+BRAINSTORM-*.md
+4.pdf
+*.log
+.env
+.env.*
