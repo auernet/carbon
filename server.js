@@ -450,6 +450,9 @@ const EMAIL_RX     = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isValidDate(s)  { return !s || (typeof s === 'string' && ISO_DATE_RX.test(s)); }
 function isValidCcy(s)   { return !s || (typeof s === 'string' && ISO_CCY_RX.test(s)); }
 function isValidEmail(s) { return !s || (typeof s === 'string' && EMAIL_RX.test(s)); }
+const USERNAME_RX  = /^[a-z0-9][a-z0-9._-]{1,31}$/i;
+// A login id is either an email (ben@aa.ag) or a bare username (jun, raphael).
+function isValidLoginId(s) { return typeof s === 'string' && (EMAIL_RX.test(s) || USERNAME_RX.test(s)); }
 
 function audit(table, rowId, action, before, after) {
   db.prepare(
@@ -837,7 +840,7 @@ app.get('/api/users', requireAdmin, (req, res) => {
 app.post('/api/users', requireAdmin, (req, res) => {
   const { email, password, display_name, role } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid email format' });
+  if (!isValidLoginId(email)) return res.status(400).json({ error: 'invalid username or email' });
   if (String(password).length < 8) return res.status(400).json({ error: 'password must be 8+ chars' });
   if (!['admin', 'user', 'readonly'].includes(role || 'user')) {
     return res.status(400).json({ error: 'invalid role' });
