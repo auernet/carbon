@@ -61,7 +61,7 @@ None. The previous handoff (HANDOFF.md at project root) is from sweep #14+#15 an
 
 **After persistence holds (verified by surviving two consecutive `Restart` clicks):**
 
-2. **Restore Ben's data** — `/tmp/carbon-migration.tar.gz` rebuild from `/Users/ben/Desktop/Carbon/data/` (excluding `data/backups/` etc.), POST to `/api/restore`, restart, verify entities=2, contacts/invoices populated.
+2. **Restore Ben's data** — `/tmp/carbon-migration.tar.gz` rebuild from `/Users/ben/Dev/Carbon/data/` (excluding `data/backups/` etc.), POST to `/api/restore`, restart, verify entities=2, contacts/invoices populated.
 3. **Create Jun + Raphael admin accounts** — `POST /api/users` as the logged-in admin with role=admin, display_name "Jun" / "Raphael". Generate strong random temp passwords via `openssl rand -base64 14`. Hand them to Ben to relay.
 4. **Verify persistence one more time** — restart prod once more, confirm Ben's login + Jun/Raphael accounts all survive.
 5. **Optional hardening:**
@@ -109,7 +109,7 @@ Next session must do, in order:
 4. **Redeploy** (Coolify UI → `Redeploy` button) — this re-creates the container with the new volume mount.
 5. **Re-bootstrap:**
    ```
-   tar -czf /tmp/carbon-migration.tar.gz -C /Users/ben/Desktop/Carbon \
+   tar -czf /tmp/carbon-migration.tar.gz -C /Users/ben/Dev/Carbon \
      --exclude='data/backups' --exclude='data/_pending_restore.tar.gz' \
      --exclude='data/_restoring' data
    ```

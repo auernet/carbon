@@ -2,7 +2,7 @@
 
 Local-first company management software for **HWG (Honorwell Group Ltd, HK)** and **Meridian (Meridian Ventures L.L.C-FZ, Dubai Meydan)**. Sole operator: Ben. Scope: general admin, invoicing, banking, KYC, money flows, suppliers/customers, contracts. Future jurisdictions.
 
-Project root: `/Users/ben/Desktop/Carbon/` (empty). Related context: `/Users/ben/Downloads/Honorwell & Meridian/` (websites + corporate docs already live).
+Project root: `/Users/ben/Dev/Carbon/` (empty). Related context: `/Users/ben/Downloads/Honorwell & Meridian/` (websites + corporate docs already live).
 
 ---
 
