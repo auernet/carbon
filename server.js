@@ -15,38 +15,39 @@ const SEED_PATH = path.join(ROOT, 'db', 'seed.sql');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// Apply pending restore BEFORE opening the DB. Staging happens OUTSIDE the
-// data dir so we can safely rename data → data-pre-restore-<stamp>.
+// Apply pending restore BEFORE opening the DB. /app/data is a bind mount on a
+// different device than /app in production, so rename() across the two throws
+// EXDEV. Stage with copy semantics and replace the data dir's contents in
+// place — never rename the mount point itself.
 const _pendingRestorePath = path.join(DATA_DIR, '_pending_restore.tar.gz');
 if (fs.existsSync(_pendingRestorePath)) {
   console.log('Applying pending restore from', _pendingRestorePath);
   const { execSync } = require('child_process');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const externalPending = path.join(ROOT, '_carbon-restore-pending.tar.gz');
-  const stagingDir      = path.join(ROOT, '_carbon-restoring');
+  const stagingDir = path.join(ROOT, '_carbon-restoring');
   try {
-    // Step 1: move tar OUT of data so renaming data won't drag it.
-    fs.renameSync(_pendingRestorePath, externalPending);
-    // Step 2: clean staging area + extract.
+    // Extract staged copy outside the mount (tar reads across devices fine).
     fs.rmSync(stagingDir, { recursive: true, force: true });
     fs.mkdirSync(stagingDir, { recursive: true });
-    execSync(`tar -xzf "${externalPending}" -C "${stagingDir}"`);
+    execSync(`tar -xzf "${_pendingRestorePath}" -C "${stagingDir}"`);
     const stagedDataDir = path.join(stagingDir, 'data');
     if (!fs.existsSync(path.join(stagedDataDir, 'carbon.db'))) {
       throw new Error('archive missing data/carbon.db');
     }
-    // Step 3: rename current data → safety; then staged data → live.
+    // Safety copy of current data, then replace its contents in place. cpSync
+    // works across devices; emptying + copying avoids renaming the mount point.
     const safety = path.join(ROOT, `data-pre-restore-${stamp}`);
-    if (fs.existsSync(DATA_DIR)) fs.renameSync(DATA_DIR, safety);
-    fs.renameSync(stagedDataDir, DATA_DIR);
+    fs.cpSync(DATA_DIR, safety, { recursive: true });
+    for (const entry of fs.readdirSync(DATA_DIR)) {
+      fs.rmSync(path.join(DATA_DIR, entry), { recursive: true, force: true });
+    }
+    fs.cpSync(stagedDataDir, DATA_DIR, { recursive: true });
     fs.rmSync(stagingDir, { recursive: true, force: true });
-    fs.unlinkSync(externalPending);
     console.log('Restore applied. Previous data saved to', safety);
   } catch (e) {
     console.error('Restore failed:', e.message);
-    // best-effort cleanup
+    // best-effort cleanup; drop the pending tar so we don't loop on a bad archive
     try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) {}
-    try { fs.unlinkSync(externalPending); } catch (_) {}
     try { fs.unlinkSync(_pendingRestorePath); } catch (_) {}
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   }
