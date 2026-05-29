@@ -4238,7 +4238,6 @@ function openGlobalSearch() {
       await loadTasks();
     } catch (err) { toast('Save failed: ' + err.message, 'error'); }
   });
-  document.getElementById('tasks-filter-status')?.addEventListener('change', loadTasks);
   window.loadTasks = async function () {
     const status = document.getElementById('tasks-filter-status')?.value || '';
     const rows = await api.tasks(status);
@@ -4279,6 +4278,9 @@ function openGlobalSearch() {
       }
     }));
   };
+  // Attach AFTER loadTasks is defined — referencing it earlier threw a boot-time
+  // ReferenceError that aborted init() before loadDashboard() ever ran.
+  document.getElementById('tasks-filter-status')?.addEventListener('change', loadTasks);
 
   // Bulk-email selected invoices
   document.getElementById('bulk-email')?.addEventListener('click', async () => {
