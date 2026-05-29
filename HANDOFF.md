@@ -1,5 +1,8 @@
 # Carbon — Session Handoff 2026-05-28
 
+> **⚠️ Newer handoff supersedes the resume protocol here:** see [docs/HANDOFF-prod-deploy-2026-05-29.md](docs/HANDOFF-prod-deploy-2026-05-29.md). Prod deploy to `carbon.aa.ag` is **in-progress with a blocker** (volume persistence not yet fixed in Coolify). Resume the prod work first; the candidate-improvements list below is paused until prod is stable.
+
+
 ## §0 Session at a glance
 
 **Original ask:** `continue` (sticky-sweep #14, then `continue` again → #15).
