@@ -1934,6 +1934,7 @@ document.addEventListener('input', (e) => {
 
 async function openInvoiceDialog(id, defaultDirection) {
   state.invEditingId = id;
+  state.invEditingNumber = null;
   invForm.reset();
 
   // entity selector
@@ -1952,6 +1953,7 @@ async function openInvoiceDialog(id, defaultDirection) {
 
   if (id) {
     const inv = await api.invoice(id);
+    state.invEditingNumber = inv.number || null;
     trackRecent('invoices', id, inv.number || '#' + id);
     applyInvoiceDirectionUI(inv.direction || 'sales');
     document.getElementById('inv-direction').value = inv.direction || 'sales';
@@ -3594,51 +3596,123 @@ async function loadAudit() {
   if (s)  params.set('since', s);
   if (u)  params.set('until', u);
   const rows = await fetch('/api/audit?' + params).then(r => r.json());
-  const tbody = document.querySelector('#audit-table tbody');
-  const drillable = new Set(['contacts', 'invoices', 'contracts', 'kyc_records']);
-  tbody.innerHTML = rows.map((r, i) => {
-    const canDrill = r.row_id && drillable.has(r.table_name);
-    const idCell = canDrill
-      ? `<a href="#" class="audit-drill" data-table="${escapeHtml(r.table_name)}" data-id="${r.row_id}" onclick="event.stopPropagation()">#${r.row_id}</a>`
-      : (r.row_id ?? '');
-    return `
-    <tr class="audit-row" data-i="${i}">
-      <td><span class="muted">${escapeHtml(r.ts)}</span></td>
-      <td>${escapeHtml(r.table_name)}</td>
-      <td>${idCell}</td>
-      <td>${escapeHtml(r.action)}</td>
-      <td>${escapeHtml(r.actor)}</td>
-    </tr>
-    <tr class="audit-detail" data-i="${i}" hidden><td colspan="5"></td></tr>
-  `;}).join('');
-  tbody.querySelectorAll('a.audit-drill').forEach(a => {
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      const table = a.dataset.table;
-      const id = Number(a.dataset.id);
-      const tabMap = { contacts: 'contacts', invoices: 'invoices', contracts: 'contracts', kyc_records: 'kyc' };
-      const tab = tabMap[table];
-      if (tab) document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
-      setTimeout(() => {
-        if (table === 'contacts') openContactDialog(id);
-        else if (table === 'invoices') openInvoiceDialog(id);
-        else if (table === 'contracts') openContractDialog(id);
-        else if (table === 'kyc_records') openKycDialog(id);
-      }, 100);
-    });
+  const feed = document.getElementById('audit-feed');
+  if (!rows.length) { feed.innerHTML = '<div class="muted" style="padding:24px;text-align:center">No audit events.</div>'; return; }
+  const drillable = { contacts: 'contacts', invoices: 'invoices', contracts: 'contracts', kyc_records: 'kyc' };
+  let html = '', lastDay = '';
+  rows.forEach((r, i) => {
+    const day = (r.ts || '').slice(0, 10);
+    if (day !== lastDay) { html += `<div class="audit-day">${escapeHtml(auditDayLabel(day))}</div>`; lastDay = day; }
+    const tab = drillable[r.table_name];
+    const drillAttr = (tab && r.row_id) ? ` data-drill-tab="${tab}" data-drill-id="${r.row_id}"` : '';
+    html += `
+      <div class="audit-item ${auditActionClass(r.action)}" data-i="${i}"${drillAttr}>
+        <span class="audit-dot"></span>
+        <div class="audit-main"><div class="audit-line">${auditSentence(r)} ${auditChips(r)}</div></div>
+        <span class="audit-actor">${escapeHtml(r.actor || 'system')}</span>
+        <span class="audit-time" title="${escapeHtml(r.ts || '')}">${escapeHtml(auditRelTime(r.ts))}</span>
+      </div>
+      <div class="audit-detail" data-i="${i}" hidden></div>`;
   });
-  tbody.querySelectorAll('tr.audit-row').forEach(tr => {
-    tr.style.cursor = 'pointer';
-    tr.addEventListener('click', () => {
-      const i = tr.dataset.i;
-      const detail = tbody.querySelector(`tr.audit-detail[data-i="${i}"]`);
-      if (!detail.dataset.rendered) {
-        detail.querySelector('td').innerHTML = renderAuditDiff(rows[i]);
-        detail.dataset.rendered = '1';
-      }
+  feed.innerHTML = html;
+  feed.querySelectorAll('.audit-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const i = item.dataset.i;
+      const detail = feed.querySelector(`.audit-detail[data-i="${i}"]`);
+      if (!detail.dataset.rendered) { detail.innerHTML = renderAuditDiff(rows[i]); detail.dataset.rendered = '1'; }
       detail.hidden = !detail.hidden;
     });
+    const tab = item.dataset.drillTab, id = item.dataset.drillId;
+    if (tab && id) {
+      const open = document.createElement('button');
+      open.className = 'audit-open';
+      open.textContent = 'Open ↗';
+      open.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
+        const nid = Number(id);
+        setTimeout(() => {
+          if (tab === 'contacts') openContactDialog(nid);
+          else if (tab === 'invoices') openInvoiceDialog(nid);
+          else if (tab === 'contracts') openContractDialog(nid);
+          else if (tab === 'kyc') openKycDialog(nid);
+        }, 120);
+      });
+      item.querySelector('.audit-main').appendChild(open);
+    }
   });
+}
+
+function auditActionClass(action) {
+  if (['insert', 'create', 'setup', 'bulk-import'].includes(action)) return 'act-create';
+  if (['update', 'password-change'].includes(action)) return 'act-update';
+  if (action === 'delete') return 'act-delete';
+  if (['login', 'logout'].includes(action)) return 'act-auth';
+  if (action === 'login-failed') return 'act-fail';
+  return 'act-other';
+}
+function auditDayLabel(day) {
+  if (!day) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  const yest  = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (day === today) return 'Today';
+  if (day === yest)  return 'Yesterday';
+  return day;
+}
+function auditRelTime(ts) {
+  if (!ts) return '';
+  const t = new Date(ts.replace(' ', 'T') + 'Z').getTime();
+  if (isNaN(t)) return ts.slice(11, 16);
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  if (h < 24) return h + 'h ago';
+  return ts.slice(5, 16);
+}
+function _auditParse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
+function auditRecordLabel(row) {
+  const a = _auditParse(row.after_json) || _auditParse(row.before_json) || {};
+  const v = a.number || a.display_name || a.legal_name || a.email || a.title || a.name || a.code;
+  return v ? String(v) : (row.row_id ? '#' + row.row_id : '');
+}
+function auditHumanTable(t) {
+  const map = { money_flows: 'money flow', calendar_tokens: 'calendar token', api_tokens: 'API token', tokens: 'API token', kyc_records: 'KYC record', kyc_documents: 'KYC document', bank_accounts: 'bank account', bank_transactions: 'bank transaction', invoice_payments: 'payment', saved_views: 'saved view', webhooks: 'webhook', fx_rates: 'FX rate', users: 'user', contacts: 'contact', invoices: 'invoice', contracts: 'contract', tasks: 'task', entities: 'entity', jurisdictions: 'jurisdiction', settings: 'setting', flows: 'flow', credentials: 'credential', notes: 'comment', auth: 'sign-in' };
+  return map[t] || (t || '').replace(/_/g, ' ');
+}
+function auditSentence(row) {
+  const T = auditHumanTable(row.table_name);
+  const label = auditRecordLabel(row);
+  const tail = label ? ` <strong>${escapeHtml(label)}</strong>` : '';
+  switch (row.action) {
+    case 'insert': case 'create': return `Created ${T}${tail}`;
+    case 'update': return `Updated ${T}${tail}`;
+    case 'delete': return `Deleted ${T}${tail}`;
+    case 'login': return 'Signed in';
+    case 'logout': return 'Signed out';
+    case 'login-failed': { const a = _auditParse(row.before_json) || {}; return `Failed sign-in <strong>${escapeHtml(a.email || '?')}</strong>`; }
+    case 'password-change': return 'Changed password';
+    case 'bulk-import': return `Imported ${T}s`;
+    case 'share-link-created': return `Shared ${T}${tail}`;
+    case 'restore-queued': return 'Queued data restore';
+    case 'setup': return 'Created first admin';
+    default: return `${escapeHtml(row.action)} ${T}${tail}`;
+  }
+}
+function _auditChipVal(v) {
+  if (v == null) return '∅';
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return escapeHtml(s.length > 18 ? s.slice(0, 18) + '…' : s);
+}
+function auditChips(row) {
+  if (row.action !== 'update') return '';
+  const b = _auditParse(row.before_json), a = _auditParse(row.after_json);
+  if (!b || !a) return '';
+  const keys = [...new Set([...Object.keys(b), ...Object.keys(a)])];
+  const changed = keys.filter(k => JSON.stringify(b[k]) !== JSON.stringify(a[k]));
+  if (!changed.length) return '';
+  return changed.slice(0, 4).map(k => `<span class="audit-chip">${escapeHtml(k)}: ${_auditChipVal(b[k])}→${_auditChipVal(a[k])}</span>`).join('')
+    + (changed.length > 4 ? `<span class="audit-chip muted">+${changed.length - 4}</span>` : '');
 }
 
 function renderAuditDiff(row) {

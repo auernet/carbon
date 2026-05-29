@@ -2344,8 +2344,12 @@ dialog.ui-dialog .actions { margin-top: 20px; }
 .inv-preview {
   background: #fff;
   color: #1a1a1a;
-  padding: 30px 32px;
-  border-radius: 3px;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  min-height: 622px; /* ~A4 ratio (1:1.414) at 440px wide */
+  padding: 38px 40px;
+  border-radius: 2px;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
   font: 12.5px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif;
 }
@@ -2391,3 +2395,41 @@ dialog.ui-dialog .actions { margin-top: 20px; }
   #invoice-dialog form { grid-template-columns: 1fr; grid-template-areas: "head" "body" "preview" "foot"; }
   #invoice-dialog .inv-preview-wrap { border-left: none; border-top: 1px solid var(--border); }
 }
+
+/* ---------- audit log: dense activity feed ---------- */
+.audit-feed { display: flex; flex-direction: column; }
+.audit-day {
+  position: sticky; top: 0;
+  background: var(--bg);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 12px 4px 4px;
+  z-index: 1;
+}
+.audit-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: 6px;
+  cursor: pointer; font-size: 13px;
+}
+.audit-item:hover { background: var(--panel); }
+.audit-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.audit-item.act-create .audit-dot { background: var(--accent-2); }
+.audit-item.act-update .audit-dot { background: var(--warn); }
+.audit-item.act-delete .audit-dot { background: var(--danger); }
+.audit-item.act-auth   .audit-dot { background: #60a5fa; }
+.audit-item.act-fail   .audit-dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2); }
+.audit-main { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-line { color: var(--text); }
+.audit-line strong { font-weight: 600; }
+.audit-chip {
+  font-size: 11px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; color: var(--muted); font-family: var(--mono);
+}
+.audit-actor { flex: none; font-size: 12px; color: var(--muted); }
+.audit-time  { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 64px; text-align: right; }
+.audit-open {
+  flex: none; font-size: 11px; padding: 1px 8px; border-radius: 4px;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+}
+.audit-open:hover { border-color: var(--accent-2); color: var(--text); }
+.audit-detail { padding: 0 8px 10px 25px; }

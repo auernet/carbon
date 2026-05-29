@@ -6,6 +6,11 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
+
+// Request-scoped actor context so audit() records WHO did each action
+// without threading the user through all ~70 call sites.
+const auditCtx = new AsyncLocalStorage();
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
@@ -454,14 +459,17 @@ const USERNAME_RX  = /^[a-z0-9][a-z0-9._-]{1,31}$/i;
 // A login id is either an email (ben@aa.ag) or a bare username (jun, raphael).
 function isValidLoginId(s) { return typeof s === 'string' && (EMAIL_RX.test(s) || USERNAME_RX.test(s)); }
 
-function audit(table, rowId, action, before, after) {
+function audit(table, rowId, action, before, after, actorOverride) {
+  const store = auditCtx.getStore();
+  const actor = actorOverride || (store && store.actor) || 'system';
   db.prepare(
-    `INSERT INTO audit_log (table_name, row_id, action, before_json, after_json)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO audit_log (table_name, row_id, action, actor, before_json, after_json)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     table,
     rowId,
     action,
+    actor,
     before ? JSON.stringify(before) : null,
     after ? JSON.stringify(after) : null
   );
@@ -730,7 +738,7 @@ app.use((req, res, next) => {
       return res.status(403).json({ error: 'token is read-only' });
     }
   }
-  next();
+  auditCtx.run({ actor: (req.user && req.user.email) || 'system' }, () => next());
 });
 
 // Static + landing-page routing (login / setup before app).
@@ -774,6 +782,7 @@ app.post('/api/auth/login', (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE email = ? AND status = ?').get(String(email).toLowerCase(), 'active');
   if (!u || !verifyPassword(password, u.password_salt, u.password_hash)) {
     recordLoginFail(ip);
+    audit('auth', u ? u.id : null, 'login-failed', null, { email: String(email).toLowerCase(), ip }, String(email || '').toLowerCase() || 'anon');
     return res.status(401).json({ error: 'invalid email or password' });
   }
   clearLoginFails(ip);
@@ -784,6 +793,7 @@ app.post('/api/auth/login', (req, res) => {
   ).run(sid, u.id, expires, req.headers['user-agent'] || '');
   db.prepare(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`).run(u.id);
   setSessionCookie(res, sid);
+  audit('users', u.id, 'login', null, null, u.email);
   res.json({ ok: true, user: { id: u.id, email: u.email, display_name: u.display_name, role: u.role } });
 });
 
@@ -802,13 +812,15 @@ app.post('/api/auth/change-password', (req, res) => {
     .run(hash, salt, sess.id);
   // revoke all other sessions for this user
   db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(sess.id, sess.sid);
-  audit('users', sess.id, 'password-change', null, null);
+  audit('users', sess.id, 'password-change', null, null, sess.email);
   res.json({ ok: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
+  const sess = getSession(req);
   const sid = parseCookies(req)[SESSION_COOKIE];
   if (sid) db.prepare('DELETE FROM sessions WHERE id = ?').run(sid);
+  if (sess) audit('users', sess.id, 'logout', null, null, sess.email);
   clearSessionCookie(res);
   res.json({ ok: true });
 });
