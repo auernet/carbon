@@ -878,6 +878,8 @@
     <form id="invoice-form" method="dialog">
       <h2 id="invoice-form-title">New invoice</h2>
 
+      <div class="inv-split">
+      <div class="inv-body">
       <div class="grid">
         <label>Direction *
           <select name="direction" id="inv-direction" required>
@@ -989,6 +991,9 @@
           <button type="button" id="inv-note-add">Post</button>
         </div>
       </fieldset>
+      </div><!-- /.inv-body -->
+      <aside class="inv-preview-wrap"><div id="inv-preview" class="inv-preview"></div></aside>
+      </div><!-- /.inv-split -->
 
       <div class="actions">
         <button type="button" id="invoice-cancel">Cancel</button>

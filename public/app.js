@@ -2018,6 +2018,12 @@ async function openInvoiceDialog(id, defaultDirection) {
   };
   renderInvoiceLines();
   if (id) attachActivityPanel(invDlg, 'invoices', id);
+  if (!invForm._previewWired) {
+    invForm.addEventListener('input', renderInvoicePreview);
+    invForm.addEventListener('change', renderInvoicePreview);
+    invForm._previewWired = true;
+  }
+  renderInvoicePreview();
   invDlg.showModal();
 }
 
@@ -2071,6 +2077,63 @@ function renderInvoiceTotals() {
   document.getElementById('inv-subtotal').textContent = fmtMoney(sub);
   document.getElementById('inv-tax').textContent      = fmtMoney(tax);
   document.getElementById('inv-total').textContent    = fmtMoney(sub + tax);
+  renderInvoicePreview();
+}
+
+// Live invoice preview — mirrors the server-side PDF template (renderInvoiceHTML).
+function renderInvoicePreview() {
+  const el = document.getElementById('inv-preview');
+  if (!el || !invForm) return;
+  const f = invForm.elements;
+  const ent = state.entities.find(e => e.id === Number(f['entity_id'] && f['entity_id'].value));
+  const con = state.contacts.find(c => c.id === Number(f['contact_id'] && f['contact_id'].value));
+  const dir = (f['direction'] && f['direction'].value) || 'sales';
+  const ccy = ((f['currency'] && f['currency'].value) || (ent && ent.base_currency) || '').toUpperCase();
+  const status = (f['status'] && f['status'].value) || 'draft';
+  const val = (name) => (f[name] && f[name].value) || '';
+  let sub = 0, tax = 0;
+  const rows = (state.invDraftLines || [])
+    .filter(l => l.description || l.unit_price || l.quantity)
+    .map(l => {
+      const q = Number(l.quantity) || 0, u = Number(l.unit_price) || 0, t = Number(l.tax_rate) || 0;
+      sub += q * u; tax += q * u * t;
+      return `<tr><td>${escapeHtml(l.description || '')}</td><td class="num">${q.toLocaleString()}</td><td class="num">${fmtMoney(u, ccy)}</td><td class="num">${(t * 100).toFixed(2)}%</td><td class="num">${fmtMoney(q * u * (1 + t), ccy)}</td></tr>`;
+    }).join('');
+  const number = state.invEditingId ? (state.invEditingNumber || '—') : 'DRAFT';
+  el.innerHTML = `
+    <div class="ip-head">
+      <div class="ip-from">
+        <h1>${escapeHtml((ent && (ent.legal_name || ent.code)) || 'Your entity')}</h1>
+        ${ent && ent.registered_address ? `<div class="ip-small">${escapeHtml(ent.registered_address)}</div>` : ''}
+        ${ent && ent.tax_id ? `<div class="ip-small">Tax ID: ${escapeHtml(ent.tax_id)}</div>` : ''}
+      </div>
+      <div class="ip-meta">
+        <div class="ip-doctype">${dir === 'purchase' ? 'BILL' : 'INVOICE'}</div>
+        <div class="ip-small"># ${escapeHtml(number)}${val('external_number') ? ` (ref ${escapeHtml(val('external_number'))})` : ''}</div>
+        ${val('issue_date') ? `<div class="ip-small">Issued ${escapeHtml(val('issue_date'))}</div>` : ''}
+        ${val('due_date') ? `<div class="ip-small">Due ${escapeHtml(val('due_date'))}</div>` : ''}
+        <div><span class="ip-status ${escapeHtml(status)}">${escapeHtml(status)}</span></div>
+      </div>
+    </div>
+    <div class="ip-billto">
+      <h3>Bill to</h3>
+      <div class="ip-name">${escapeHtml((con && (con.legal_name || con.display_name)) || '—')}</div>
+      ${con && con.country ? `<div class="ip-small">${escapeHtml(con.country)}</div>` : ''}
+      ${con && con.tax_id ? `<div class="ip-small">Tax ID: ${escapeHtml(con.tax_id)}</div>` : ''}
+      ${con && con.email ? `<div class="ip-small">${escapeHtml(con.email)}</div>` : ''}
+      ${val('po_reference') ? `<div class="ip-small">PO: ${escapeHtml(val('po_reference'))}</div>` : ''}
+    </div>
+    <table class="ip-lines">
+      <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Tax</th><th class="num">Total</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" class="ip-empty">No line items yet</td></tr>'}</tbody>
+    </table>
+    <div class="ip-totals">
+      <div class="ip-row"><span>Subtotal</span><span>${fmtMoney(sub, ccy)}</span></div>
+      <div class="ip-row"><span>Tax</span><span>${fmtMoney(tax, ccy)}</span></div>
+      <div class="ip-row grand"><span>Total</span><span>${fmtMoney(sub + tax, ccy)}</span></div>
+    </div>
+    ${val('notes') ? `<div style="margin-top:18px"><h3 style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.05em;margin:0 0 3px">Notes</h3><div style="color:#222;white-space:pre-wrap">${escapeHtml(val('notes'))}</div></div>` : ''}
+  `;
 }
 
 async function saveInvoice() {
@@ -3626,16 +3689,34 @@ function escapeHtml(s) {
 }
 
 // ---------- Notifications inbox ----------
+// Routine, auto-generated kinds the user doesn't need to see in the inbox.
+const NOTIF_HIDDEN_KINDS = new Set(['backup', 'fx']);
+const NOTIF_KIND_LABELS = { error: 'Errors', dunning: 'Reminders', webhook: 'Webhooks', fx: 'FX', backup: 'Backups' };
+const NOTIF_KIND_ORDER = ['error', 'dunning', 'webhook'];
+
 async function refreshNotifications() {
   try {
     const data = await fetch('/api/notifications').then(r => r.json());
+    const items = (data.items || []).filter(n => !NOTIF_HIDDEN_KINDS.has(n.kind));
     const badge = document.getElementById('notif-count');
-    if (data.unread > 0) { badge.hidden = false; badge.textContent = String(data.unread); }
+    const unread = items.filter(n => !n.is_read).length;
+    if (unread > 0) { badge.hidden = false; badge.textContent = String(unread); }
     else { badge.hidden = true; }
     const list = document.getElementById('notif-list');
-    list.innerHTML = data.items.length
-      ? data.items.map(n => `<li class="${n.is_read ? '' : 'unread'}"><span class="ts">${escapeHtml(n.ts)}</span><span class="kind kind-${n.kind}">${escapeHtml(n.kind)}</span><span>${escapeHtml(n.message)}</span></li>`).join('')
-      : '<li class="muted" style="padding:14px;text-align:center">No notifications yet.</li>';
+    if (!items.length) {
+      list.innerHTML = '<li class="muted" style="padding:14px;text-align:center">No notifications.</li>';
+      return;
+    }
+    const groups = {};
+    for (const n of items) (groups[n.kind] = groups[n.kind] || []).push(n);
+    const kinds = Object.keys(groups).sort((a, b) => {
+      const ia = NOTIF_KIND_ORDER.indexOf(a), ib = NOTIF_KIND_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    list.innerHTML = kinds.map(k => `
+      <li class="notif-group-head"><span class="kind kind-${k}">${escapeHtml(NOTIF_KIND_LABELS[k] || k)}</span><span class="muted">${groups[k].length}</span></li>
+      ${groups[k].map(n => `<li class="${n.is_read ? '' : 'unread'}"><span class="ts">${escapeHtml(n.ts)}</span><span>${escapeHtml(n.message)}</span></li>`).join('')}
+    `).join('');
   } catch (_) {}
 }
 
