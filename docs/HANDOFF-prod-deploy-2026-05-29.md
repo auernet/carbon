@@ -1,5 +1,17 @@
 # Carbon — Prod Deploy Handoff 2026-05-29
 
+## ✅ RESOLVED 2026-05-29 (later session)
+
+The persistence blocker below is **fixed**. Carbon is live at https://carbon.aa.ag with durable data.
+
+- **Persistence:** the Coolify Directory Mount (`/data/coolify/applications/f4kgsgckgw408co0440kso40` → `/app/data`) already existed; the real culprit was a leftover `custom_docker_run_options` bind mount (`-v /var/lib/coolify/carbon-data:/app/data`) on the *same* destination. Cleared it; a clean container recreate then applied the single Directory Mount. Verified data survives consecutive restarts.
+- **Restore bug exposed + fixed:** startup restore used `rename()` between `/app` and the now-separate-device `/app/data`, throwing `EXDEV`, so every restore silently failed. Fixed to use `fs.cpSync` + in-place empty (commit `b9b54f8`).
+- **Data restored:** Ben's real data is live (2 entities HWG/MER, 1 contact, 1 invoice).
+- **Users:** `ben@aa.ag`, `jun@aa.ag`, `raphael@aa.ag` — all admin, all verified logging in after a restart.
+- **Still open (optional):** rotate the Coolify API token (was in cleartext); `/api/auth/setup` remains open when the users table is empty (now low-risk since data persists); off-server backups not yet configured.
+
+---
+
 ## §0 Session at a glance
 
 **Original ask:** "can we put carbon online so jun and raphael can also use it, pls create carbon.aa.ag and do the neccessary"
