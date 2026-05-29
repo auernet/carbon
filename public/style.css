@@ -2283,3 +2283,22 @@ select.inline-status:focus { outline: none; box-shadow: none; }
   color: var(--muted);
 }
 .hero-mini strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------- styled confirm / alert / prompt dialogs ---------- */
+dialog.ui-dialog { max-width: 440px; }
+dialog.ui-dialog form { padding: 22px; }
+.ui-dialog-msg {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+dialog.ui-dialog h2 { margin-bottom: 8px; }
+.ui-dialog-input {
+  width: 100%;
+  margin-top: 14px;
+  font-size: 14px;
+}
+dialog.ui-dialog .actions { margin-top: 20px; }

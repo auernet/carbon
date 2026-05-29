@@ -113,13 +113,13 @@ function jsonReq(method, url, body) {
 }
 
 async function tryHardDelete(url, name, refreshFn) {
-  if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return false;
+  if (!await uiConfirm(`Permanently delete "${name}"? This cannot be undone.`)) return false;
   try {
     const r = await fetch(url + '?hard=1', { method: 'DELETE' });
     if (r.status === 409) {
       const data = await r.json();
       const list = Object.entries(data.blockers).map(([k, v]) => `• ${v} ${k}`).join('\n');
-      alert(`Cannot delete "${name}":\n\n${list}\n\nUse Archive instead.`);
+      await uiAlert(`Cannot delete "${name}":\n\n${list}\n\nUse Archive instead.`);
       return false;
     }
     if (!r.ok) {
@@ -456,7 +456,7 @@ async function loadSettings() {
   jbody.querySelectorAll('button[data-act="del-j"]').forEach(btn => {
     btn.addEventListener('click', async e => {
       const code = e.target.closest('tr').dataset.code;
-      if (!confirm(`Delete jurisdiction "${code.toUpperCase()}"? Refused if still in use.`)) return;
+      if (!await uiConfirm(`Delete jurisdiction "${code.toUpperCase()}"? Refused if still in use.`)) return;
       try {
         const r = await fetch('/api/jurisdictions/' + code, { method: 'DELETE' });
         const data = await r.json();
@@ -520,7 +520,7 @@ document.getElementById('entity-logo-input').addEventListener('change', async (e
 document.getElementById('entity-logo-delete').addEventListener('click', async () => {
   const id = entForm.dataset.id ? Number(entForm.dataset.id) : null;
   if (!id) return;
-  if (!confirm('Remove the logo?')) return;
+  if (!await uiConfirm('Remove the logo?')) return;
   await fetch('/api/entities/' + id + '/logo', { method: 'DELETE' });
   document.getElementById('entity-logo-preview').textContent = 'No logo uploaded.';
   document.getElementById('entity-logo-delete').hidden = true;
@@ -531,7 +531,7 @@ document.getElementById('entity-logo-delete').addEventListener('click', async ()
 document.getElementById('btn-restore').addEventListener('click', async () => {
   const file = document.getElementById('restore-input').files[0];
   if (!file) { toast('Pick a tar.gz backup file first.', 'warn'); return; }
-  if (!confirm('Queue this restore? Current data will be saved alongside as data-pre-restore-<timestamp>. Server must be restarted to apply.')) return;
+  if (!await uiConfirm('Queue this restore? Current data will be saved alongside as data-pre-restore-<timestamp>. Server must be restarted to apply.')) return;
   try {
     const r = await fetch('/api/restore', {
       method: 'POST',
@@ -1149,7 +1149,7 @@ function renderContacts() {
         btn.disabled = false; btn.textContent = 'Statement';
       }
       if (btn.dataset.act === 'archive') {
-        if (confirm('Archive this contact?')) {
+        if (await uiConfirm('Archive this contact?')) {
           await api.archiveContact(id);
           await loadContacts();
         }
@@ -1429,7 +1429,7 @@ document.getElementById('invoice-print').addEventListener('click', () => {
 
 document.getElementById('invoice-email').addEventListener('click', async () => {
   if (!state.invEditingId) return;
-  const to = prompt('Email PDF to:', '');
+  const to = await uiPrompt('Email PDF to:', '');
   if (!to) return;
   try {
     await jsonReq('POST', '/api/invoices/' + state.invEditingId + '/email', { to });
@@ -1469,7 +1469,7 @@ async function loadInvoicePayments(invoiceId) {
   list.querySelectorAll('button[data-act="rm-pay"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const pid = Number(e.target.closest('.pay-row').dataset.id);
-      if (!confirm('Remove this payment?')) return;
+      if (!await uiConfirm('Remove this payment?')) return;
       await fetch('/api/invoices/payments/' + pid, { method: 'DELETE' });
       await loadInvoicePayments(invoiceId);
     });
@@ -1497,7 +1497,7 @@ async function loadNotes(entityTable, entityId, listElId) {
   list.querySelectorAll('button[data-act="rm-note"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const nid = Number(e.target.closest('.note-row').dataset.id);
-      if (!confirm('Delete this comment?')) return;
+      if (!await uiConfirm('Delete this comment?')) return;
       await fetch('/api/notes/' + nid, { method: 'DELETE' });
       await loadNotes(entityTable, entityId, listElId);
     });
@@ -1578,7 +1578,7 @@ function wireSavedViewControls(panel, captureQuery, applyQuery) {
     const views = JSON.parse(e.target.dataset.views || '[]');
     if (!id) return;
     if (id === '__delete__') {
-      const name = prompt('Type the exact name of the view to delete:');
+      const name = await uiPrompt('Type the exact name of the view to delete:');
       if (!name) { e.target.value = ''; return; }
       const v = views.find(x => x.name === name);
       if (!v) { toast('No view named ' + name, 'warn'); e.target.value = ''; return; }
@@ -1592,7 +1592,7 @@ function wireSavedViewControls(panel, captureQuery, applyQuery) {
     e.target.value = '';
   });
   btn.addEventListener('click', async () => {
-    const name = prompt('Name this view:');
+    const name = await uiPrompt('Name this view:');
     if (!name) return;
     try {
       await jsonReq('POST', '/api/saved-views', { panel, name, query: captureQuery() });
@@ -1628,7 +1628,7 @@ document.getElementById('invoice-saved-views').addEventListener('change', async 
   const views = JSON.parse(e.target.dataset.views || '[]');
   if (!id) return;
   if (id === '__delete__') {
-    const view = prompt('Type the exact name of the view to delete:');
+    const view = await uiPrompt('Type the exact name of the view to delete:');
     if (!view) { e.target.value = ''; return; }
     const v = views.find(x => x.name === view);
     if (!v) { toast('No view named ' + view, 'warn'); e.target.value = ''; return; }
@@ -1652,7 +1652,7 @@ document.getElementById('invoice-saved-views').addEventListener('change', async 
 });
 
 document.getElementById('btn-save-view').addEventListener('click', async () => {
-  const name = prompt('Name this view (e.g. "Overdue HWG sent"):');
+  const name = await uiPrompt('Name this view (e.g. "Overdue HWG sent"):');
   if (!name) return;
   try {
     await jsonReq('POST', '/api/saved-views', {
@@ -1791,7 +1791,7 @@ function renderInvoices() {
         btn.disabled = false; btn.textContent = 'PDF';
       }
       if (btn.dataset.act === 'void') {
-        if (confirm('Mark this invoice as void?')) {
+        if (await uiConfirm('Mark this invoice as void?')) {
           await api.voidInvoice(id);
           await loadInvoices();
         }
@@ -1873,7 +1873,7 @@ document.getElementById('invoices-select-all').addEventListener('change', (e) =>
 document.getElementById('bulk-void').addEventListener('click', async () => {
   const ids = Array.from(document.querySelectorAll('#invoices-table tbody .row-check:checked')).map(c => Number(c.dataset.id));
   if (!ids.length) return;
-  if (!confirm(`Mark ${ids.length} invoice(s) as void?`)) return;
+  if (!await uiConfirm(`Mark ${ids.length} invoice(s) as void?`)) return;
   for (const id of ids) await api.voidInvoice(id);
   toast(`Voided ${ids.length} invoice(s)`, 'ok');
   await loadInvoices();
@@ -1995,7 +1995,7 @@ async function openInvoiceDialog(id, defaultDirection) {
     const draft = loadInvoiceDraft();
     if (draft) {
       const mins = Math.round((Date.now() - draft.savedAt) / 60000);
-      if (confirm(`Recover unsaved invoice draft from ${mins} min ago?`)) {
+      if (await uiConfirm(`Recover unsaved invoice draft from ${mins} min ago?`)) {
         for (const [k, v] of Object.entries(draft)) {
           if (k === 'lines')   { state.invDraftLines = Array.isArray(v) ? v : []; continue; }
           if (k === 'savedAt') continue;
@@ -2169,7 +2169,7 @@ function renderContracts() {
       const id = Number(e.target.closest('tr').dataset.id);
       if (btn.dataset.act === 'edit') openContractDialog(id);
       if (btn.dataset.act === 'terminate') {
-        if (confirm('Mark this contract as terminated?')) {
+        if (await uiConfirm('Mark this contract as terminated?')) {
           await api.archiveContract(id);
           await loadContracts();
         }
@@ -2324,7 +2324,7 @@ function renderKyc() {
       const id = Number(e.target.closest('tr').dataset.id);
       if (btn.dataset.act === 'edit') openKycDialog(id);
       if (btn.dataset.act === 'delete') {
-        if (confirm('Delete KYC record and all its documents?')) {
+        if (await uiConfirm('Delete KYC record and all its documents?')) {
           await api.deleteKyc(id);
           await loadKyc();
         }
@@ -2387,7 +2387,7 @@ function renderKycDocsList(docs) {
   el.querySelectorAll('button[data-act="rm-doc"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const docId = Number(e.target.closest('li').dataset.id);
-      if (!confirm('Delete this document?')) return;
+      if (!await uiConfirm('Delete this document?')) return;
       await api.deleteKycDoc(docId);
       const fresh = await api.kyc(state.kycEditingId);
       renderKycDocsList(fresh.documents);
@@ -2626,7 +2626,7 @@ function renderBankAccounts() {
       const id = Number(btn.closest('li').dataset.id);
       if (btn.dataset.act === 'edit') openBankAcctDialog(id);
       if (btn.dataset.act === 'archive') {
-        if (confirm('Archive this account?')) {
+        if (await uiConfirm('Archive this account?')) {
           await api.archiveBankAccount(id);
           await loadBanks();
         }
@@ -2711,7 +2711,7 @@ function renderBankTransactions() {
   tbody.querySelectorAll('button[data-act="delete"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const id = Number(e.target.closest('tr').dataset.id);
-      if (!confirm('Delete this transaction?')) return;
+      if (!await uiConfirm('Delete this transaction?')) return;
       await fetch('/api/bank-transactions/' + id, { method: 'DELETE' });
       await loadBankTransactions(state.bankCurrentAccountId);
       await loadBanks();
@@ -2881,7 +2881,7 @@ function renderFlows() {
       const id = Number(e.target.closest('tr').dataset.id);
       if (btn.dataset.act === 'edit') openFlowDialog(id);
       if (btn.dataset.act === 'delete') {
-        if (confirm('Delete this flow?')) {
+        if (await uiConfirm('Delete this flow?')) {
           await api.deleteFlow(id);
           await loadFlows();
         }
@@ -3035,7 +3035,7 @@ function renderUsers() {
       const id = Number(e.target.closest('tr').dataset.id);
       if (btn.dataset.act === 'edit') openUserDialog(id);
       if (btn.dataset.act === 'delete') {
-        if (confirm('Delete this user? Their sessions will be revoked.')) {
+        if (await uiConfirm('Delete this user? Their sessions will be revoked.')) {
           try { await api.deleteUser(id); } catch (err) { toast(err.message, 'error'); }
           await loadUsers();
         }
@@ -3112,7 +3112,7 @@ async function loadCalTokens() {
     tbody.querySelectorAll('button[data-act="revoke-cal"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const tok = e.target.closest('tr').dataset.token;
-        if (!confirm('Revoke this calendar URL?')) return;
+        if (!await uiConfirm('Revoke this calendar URL?')) return;
         await fetch('/api/calendar-tokens/' + tok, { method: 'DELETE' });
         toast('Revoked', 'ok');
         await loadCalTokens();
@@ -3157,7 +3157,7 @@ async function loadWebhooks() {
     tbody.querySelectorAll('button[data-act="revoke-wh"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = Number(e.target.closest('tr').dataset.id);
-        if (!confirm('Delete this webhook?')) return;
+        if (!await uiConfirm('Delete this webhook?')) return;
         await fetch('/api/webhooks/' + id, { method: 'DELETE' });
         await loadWebhooks();
       });
@@ -3172,7 +3172,7 @@ document.getElementById('webhook-add').addEventListener('click', async () => {
     const r = await jsonReq('POST', '/api/webhooks', { url, events });
     document.getElementById('webhook-url').value = '';
     document.getElementById('webhook-events').value = '';
-    alert(`Webhook added.\n\nSigning secret (save it):\n${r.secret}\n\nVerify each delivery via X-Carbon-Signature header (HMAC-SHA256).`);
+    await uiAlert(`Webhook added.\n\nSigning secret (save it):\n${r.secret}\n\nVerify each delivery via X-Carbon-Signature header (HMAC-SHA256).`);
     await loadWebhooks();
   } catch (err) { toast('Add failed: ' + err.message, 'error'); }
 });
@@ -3194,7 +3194,7 @@ async function loadApiTokens() {
     tbody.querySelectorAll('button[data-act="revoke"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = Number(e.target.closest('tr').dataset.id);
-        if (!confirm('Revoke this token? Scripts using it will stop working.')) return;
+        if (!await uiConfirm('Revoke this token? Scripts using it will stop working.')) return;
         await fetch('/api/tokens/' + id, { method: 'DELETE' });
         toast('Token revoked', 'ok');
         await loadApiTokens();
@@ -3211,7 +3211,7 @@ document.getElementById('token-new-add').addEventListener('click', async () => {
     const r = await jsonReq('POST', '/api/tokens', { label, scope });
     document.getElementById('token-new-label').value = '';
     await navigator.clipboard.writeText(r.token).catch(() => {});
-    alert(`Token created and copied to clipboard.\n\n${r.token}\n\nSave it now — it cannot be retrieved later.`);
+    await uiAlert(`Token created and copied to clipboard.\n\n${r.token}\n\nSave it now — it cannot be retrieved later.`);
     await loadApiTokens();
   } catch (err) { toast('Mint failed: ' + err.message, 'error'); }
 });
@@ -3269,7 +3269,7 @@ function renderCredentials() {
       const id = Number(e.target.closest('tr').dataset.id);
       if (btn.dataset.act === 'edit') openCredentialDialog(id);
       if (btn.dataset.act === 'delete') {
-        if (confirm('Delete this credential? Live sync will stop.')) {
+        if (await uiConfirm('Delete this credential? Live sync will stop.')) {
           await api.deleteCredential(id);
           await loadCredentials();
         }
@@ -3385,7 +3385,7 @@ async function loadCurrencies() {
   tbody.querySelectorAll('button[data-act="del-rate"]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const ccy = e.target.closest('tr').dataset.ccy;
-      if (!confirm(`Delete FX rate for ${ccy}?`)) return;
+      if (!await uiConfirm(`Delete FX rate for ${ccy}?`)) return;
       await api.deleteFxRate(ccy); await loadCurrencies();
     });
   });
@@ -3431,11 +3431,11 @@ document.getElementById('btn-launchd').addEventListener('click', () => {
   window.open('/api/system/launchd-plist', '_blank');
 });
 
-document.getElementById('btn-backup-encrypted')?.addEventListener('click', () => {
-  const passphrase = prompt('Passphrase for AES-256-GCM encryption (save this — without it the backup is unrecoverable):');
+document.getElementById('btn-backup-encrypted')?.addEventListener('click', async () => {
+  const passphrase = await uiPrompt('Passphrase for AES-256-GCM encryption (save this — without it the backup is unrecoverable):');
   if (!passphrase) return;
   if (passphrase.length < 8) { toast('Passphrase must be 8+ chars', 'warn'); return; }
-  const confirmText = prompt('Re-type the passphrase to confirm:');
+  const confirmText = await uiPrompt('Re-type the passphrase to confirm:');
   if (confirmText !== passphrase) { toast('Passphrases do not match', 'error'); return; }
   window.location.href = '/api/backup?encrypt=1&passphrase=' + encodeURIComponent(passphrase);
   toast('Encrypted backup downloading. Keep your passphrase safe — no recovery without it.', 'ok');
@@ -3654,7 +3654,7 @@ document.getElementById('notif-close').addEventListener('click', () => {
   document.getElementById('notif-panel').hidden = true;
 });
 document.getElementById('notif-clear').addEventListener('click', async () => {
-  if (!confirm('Clear all notifications?')) return;
+  if (!await uiConfirm('Clear all notifications?')) return;
   await fetch('/api/notifications', { method: 'DELETE' });
   await refreshNotifications();
 });
@@ -4119,7 +4119,7 @@ function openGlobalSearch() {
         taskDlg.showModal();
       }
       if (btn.dataset.act === 'delete') {
-        if (!confirm('Delete this task?')) return;
+        if (!await uiConfirm('Delete this task?')) return;
         await api.deleteTask(id); await loadTasks();
       }
     }));
@@ -4129,7 +4129,7 @@ function openGlobalSearch() {
   document.getElementById('bulk-email')?.addEventListener('click', async () => {
     const ids = Array.from(document.querySelectorAll('#invoices-table tbody .row-check:checked')).map(c => Number(c.dataset.id));
     if (!ids.length) return;
-    if (!confirm(`Email ${ids.length} invoice(s) to their contact emails?`)) return;
+    if (!await uiConfirm(`Email ${ids.length} invoice(s) to their contact emails?`)) return;
     const btn = document.getElementById('bulk-email');
     btn.disabled = true;
     let sent = 0, failed = 0;
@@ -4192,3 +4192,77 @@ function openGlobalSearch() {
   }
   wireDropzones();
 })();
+
+// ---------- styled in-app dialogs (replace native confirm/alert/prompt) ----------
+// Promise-based so callers `await uiConfirm(...)` / `await uiPrompt(...)`.
+function _uiDialog({ title = '', message = '', okText = 'OK', cancelText = 'Cancel', danger = false, isPrompt = false, defaultValue = '' }) {
+  return new Promise((resolve) => {
+    let dlg = document.getElementById('ui-dialog');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'ui-dialog';
+      dlg.className = 'ui-dialog';
+      document.body.appendChild(dlg);
+    }
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    if (title) {
+      const h = document.createElement('h2');
+      h.textContent = title;
+      form.appendChild(h);
+    }
+    const msg = document.createElement('p');
+    msg.className = 'ui-dialog-msg';
+    msg.textContent = message;
+    form.appendChild(msg);
+    let input = null;
+    if (isPrompt) {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'ui-dialog-input';
+      input.value = defaultValue;
+      form.appendChild(input);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    let cancelBtn = null;
+    if (cancelText !== null) {
+      cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.textContent = cancelText;
+      actions.appendChild(cancelBtn);
+    }
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.className = danger ? 'danger' : 'primary';
+    okBtn.textContent = okText;
+    actions.appendChild(okBtn);
+    form.appendChild(actions);
+    dlg.replaceChildren(form);
+
+    let settled = false;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      try { dlg.close(); } catch (_) {}
+      resolve(val);
+    };
+    okBtn.addEventListener('click', () => finish(isPrompt ? (input ? input.value : '') : true));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => finish(isPrompt ? null : false));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(isPrompt ? null : false); }, { once: true });
+    if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(input.value); } });
+    dlg.showModal();
+    (input || okBtn).focus();
+    if (input) input.select();
+  });
+}
+function uiConfirm(message, opts = {}) {
+  const danger = /\b(delete|remove|revoke|void|terminate|permanent|discard|wipe|reset)\b|clear all/i.test(String(message));
+  return _uiDialog({ message, danger, ...opts });
+}
+function uiAlert(message, opts = {}) {
+  return _uiDialog({ message, cancelText: null, ...opts });
+}
+function uiPrompt(message, defaultValue = '', opts = {}) {
+  return _uiDialog({ message, isPrompt: true, defaultValue, ...opts });
+}
