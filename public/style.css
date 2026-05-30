@@ -2098,6 +2098,9 @@ select.inline-status:focus { outline: none; box-shadow: none; }
   display: flex;
   flex-direction: column;
 }
+/* Respect the hidden attribute — class display:flex otherwise overrides [hidden]
+   and the panel stays permanently open regardless of the toggle handlers. */
+.notif-panel[hidden] { display: none; }
 .notif-head {
   padding: 12px 14px;
   border-bottom: 1px solid var(--divider);
