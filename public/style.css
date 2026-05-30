@@ -1952,16 +1952,17 @@ th.sort-desc::after { content: "↓"; opacity: 0.8; color: var(--accent); }
 /* Consolidated dashboard card */
 .consolidated-card {
   background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  padding: 16px 18px;
-  margin-bottom: 14px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
 }
 .consolidated-card .cons-head {
   display: flex; justify-content: space-between; align-items: baseline;
   margin-bottom: 10px;
 }
-.consolidated-card .cons-head h3 { margin: 0; font-size: 13px; }
+.consolidated-card .cons-head h3 { margin: 0; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
 .consolidated-card .cons-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1969,7 +1970,7 @@ th.sort-desc::after { content: "↓"; opacity: 0.8; color: var(--accent); }
 }
 .consolidated-card .cons-fig { padding: 4px 0; }
 .consolidated-card .cons-fig .muted { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-.consolidated-card .cons-fig .big { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.consolidated-card .cons-fig .big { font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
 
 /* Inline status editor styled like a pill */
 select.inline-status {
@@ -2226,25 +2227,37 @@ select.inline-status:focus { outline: none; box-shadow: none; }
 .hero-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent-2);
+}
+.hero-head {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
 }
 .hero-head .hero-title { font-size: 16px; }
+.hero-head .hero-title strong { color: var(--accent); font-size: 17px; letter-spacing: 0.03em; }
 .hero-head .hero-sub  { font-size: 12px; }
 
 .hero-figures {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 16px 24px;
 }
 .hero-fig .big {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 25px;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
-  margin-top: 2px;
+  letter-spacing: -0.01em;
+  margin-top: 4px;
 }
 .hero-fig .big.up   { color: var(--pill-intercompany); }
 .hero-fig .big.down { color: var(--pill-supplier); }
@@ -2284,6 +2297,8 @@ select.inline-status:focus { outline: none; box-shadow: none; }
   justify-content: space-between;
   font-size: 12px;
   color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
 }
 .hero-mini strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
