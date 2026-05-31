@@ -2425,7 +2425,8 @@ dialog.ui-dialog .actions { margin-top: 20px; }
 .audit-feed { display: flex; flex-direction: column; }
 
 /* Audit master-detail (list + detail pane) */
-#tab-audit { display: flex; flex-direction: column; }
+/* :not([hidden]) so this ID rule never out-specifies .panel[hidden]{display:none} */
+#tab-audit:not([hidden]) { display: flex; flex-direction: column; }
 .audit-split { display: flex; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--panel); }
 .audit-list { width: 380px; flex: none; border-right: 1px solid var(--border); overflow: auto; max-height: 78vh; padding: 8px; }
 .audit-list .audit-day { padding: 14px 10px 6px; }
