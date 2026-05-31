@@ -770,7 +770,10 @@
         <button id="audit-filter-clear">Clear</button>
         <button onclick="window.open('/api/export/audit.csv')" style="margin-left:auto">Export CSV</button>
       </div>
-      <div id="audit-feed" class="audit-feed"></div>
+      <div class="audit-split">
+        <div id="audit-list" class="audit-list"></div>
+        <div id="audit-detail-pane" class="audit-detail-pane"><div class="dp-placeholder muted">Select an event to see its details.</div></div>
+      </div>
     </section>
     </main>
   </div>

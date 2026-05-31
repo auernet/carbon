@@ -3596,51 +3596,103 @@ async function loadAudit() {
   if (s)  params.set('since', s);
   if (u)  params.set('until', u);
   const rows = await fetch('/api/audit?' + params).then(r => r.json());
-  const feed = document.getElementById('audit-feed');
-  if (!rows.length) { feed.innerHTML = '<div class="muted" style="padding:24px;text-align:center">No audit events.</div>'; return; }
-  const drillable = { contacts: 'contacts', invoices: 'invoices', contracts: 'contracts', kyc_records: 'kyc' };
+  const list = document.getElementById('audit-list');
+  const pane = document.getElementById('audit-detail-pane');
+  if (!rows.length) {
+    list.innerHTML = '<div class="muted" style="padding:24px;text-align:center">No audit events.</div>';
+    pane.innerHTML = '<div class="dp-placeholder muted">No event selected.</div>';
+    return;
+  }
   let html = '', lastDay = '';
   rows.forEach((r, i) => {
     const day = (r.ts || '').slice(0, 10);
     if (day !== lastDay) { html += `<div class="audit-day">${escapeHtml(auditDayLabel(day))}</div>`; lastDay = day; }
-    const tab = drillable[r.table_name];
-    const drillAttr = (tab && r.row_id) ? ` data-drill-tab="${tab}" data-drill-id="${r.row_id}"` : '';
     html += `
-      <div class="audit-item ${auditActionClass(r.action)}" data-i="${i}"${drillAttr}>
+      <button class="al-row ${auditActionClass(r.action)}" data-i="${i}">
         <span class="audit-dot"></span>
-        <div class="audit-main"><div class="audit-line">${auditSentence(r)} ${auditChips(r)}</div></div>
-        <span class="audit-actor">${escapeHtml(r.actor || 'system')}</span>
-        <span class="audit-time" title="${escapeHtml(r.ts || '')}">${escapeHtml(auditRelTime(r.ts))}</span>
-      </div>
-      <div class="audit-detail" data-i="${i}" hidden></div>`;
+        <span class="al-line">${auditSentence(r)}</span>
+        <span class="al-meta">${escapeHtml(r.actor || 'system')} · ${escapeHtml(auditRelTime(r.ts))}</span>
+      </button>`;
   });
-  feed.innerHTML = html;
-  feed.querySelectorAll('.audit-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const i = item.dataset.i;
-      const detail = feed.querySelector(`.audit-detail[data-i="${i}"]`);
-      if (!detail.dataset.rendered) { detail.innerHTML = renderAuditDiff(rows[i]); detail.dataset.rendered = '1'; }
-      detail.hidden = !detail.hidden;
+  list.innerHTML = html;
+
+  const selectRow = (i) => {
+    list.querySelectorAll('.al-row').forEach(el => el.classList.toggle('selected', el.dataset.i === String(i)));
+    pane.innerHTML = renderAuditDetail(rows[i]);
+    pane.scrollTop = 0;
+    const ob = pane.querySelector('.dp-open');
+    if (ob) ob.addEventListener('click', () => {
+      const tab = ob.dataset.drillTab, nid = Number(ob.dataset.drillId);
+      document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
+      setTimeout(() => {
+        if (tab === 'contacts') openContactDialog(nid);
+        else if (tab === 'invoices') openInvoiceDialog(nid);
+        else if (tab === 'contracts') openContractDialog(nid);
+        else if (tab === 'kyc') openKycDialog(nid);
+      }, 120);
     });
-    const tab = item.dataset.drillTab, id = item.dataset.drillId;
-    if (tab && id) {
-      const open = document.createElement('button');
-      open.className = 'audit-open';
-      open.textContent = 'Open ↗';
-      open.addEventListener('click', (e) => {
-        e.stopPropagation();
-        document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
-        const nid = Number(id);
-        setTimeout(() => {
-          if (tab === 'contacts') openContactDialog(nid);
-          else if (tab === 'invoices') openInvoiceDialog(nid);
-          else if (tab === 'contracts') openContractDialog(nid);
-          else if (tab === 'kyc') openKycDialog(nid);
-        }, 120);
-      });
-      item.querySelector('.audit-main').appendChild(open);
+  };
+  list.querySelectorAll('.al-row').forEach(el => el.addEventListener('click', () => selectRow(Number(el.dataset.i))));
+  selectRow(0);
+}
+
+function auditFmtVal(v) {
+  if (v == null || v === '') return '<span class="dp-dim">—</span>';
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return escapeHtml(s);
+}
+
+function renderAuditDetail(row) {
+  const before = _auditParse(row.before_json) || {};
+  const after  = _auditParse(row.after_json)  || {};
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  const cls = auditActionClass(row.action);
+  const drillable = { contacts: 'contacts', invoices: 'invoices', contracts: 'contracts', kyc_records: 'kyc' };
+  const tab = drillable[row.table_name];
+  const openBtn = (tab && row.row_id) ? `<button class="dp-open" data-drill-tab="${tab}" data-drill-id="${row.row_id}">Open ↗</button>` : '';
+  const kvRow = (k, val, extra = '') => `<div class="kv ${extra}"><span class="k">${escapeHtml(k)}</span><span class="v">${val}</span></div>`;
+
+  let html = `<div class="dp-head"><span class="audit-dot ${cls}"></span>
+    <div class="dp-head-main"><div class="dp-title">${auditSentence(row)}</div>
+    <div class="dp-sub">${escapeHtml(auditHumanTable(row.table_name))} · ${escapeHtml(row.actor || 'system')} · ${escapeHtml((row.ts || '').slice(0, 16))}</div></div>
+    ${openBtn}</div>`;
+
+  if (row.action === 'update') {
+    const changed = keys.filter(k => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+    const rest = keys.filter(k => !changed.includes(k));
+    if (changed.length) {
+      html += `<div class="dp-banner upd">${changed.length} field${changed.length > 1 ? 's' : ''} changed</div>`;
+      html += `<div class="dp-section-label">Changes</div><div class="kv-list">`;
+      html += changed.map(k => kvRow(k, `<span class="dp-was">${auditFmtVal(before[k])}</span><span class="dp-arrow">→</span><span class="dp-now">${auditFmtVal(after[k])}</span>`, 'changed')).join('');
+      html += `</div>`;
+    } else {
+      html += `<div class="dp-empty-detail muted">No fields changed.</div>`;
     }
-  });
+    if (rest.length) html += `<details class="dp-more"><summary>${rest.length} unchanged field${rest.length > 1 ? 's' : ''}</summary><div class="kv-list">` + rest.map(k => kvRow(k, auditFmtVal(after[k]), 'dimrow')).join('') + `</div></details>`;
+  } else if (['insert', 'create', 'delete', 'setup'].includes(row.action)) {
+    const rec = row.action === 'delete' ? before : after;
+    const recKeys = Object.keys(rec);
+    const nonNull = recKeys.filter(k => rec[k] != null && rec[k] !== '');
+    const nulls = recKeys.filter(k => !(rec[k] != null && rec[k] !== ''));
+    const bcls = row.action === 'delete' ? 'del' : 'ins';
+    const verb = row.action === 'delete' ? 'Record deleted' : 'Record created';
+    if (recKeys.length) {
+      html += `<div class="dp-banner ${bcls}">${verb} · ${recKeys.length} fields</div>`;
+      html += `<div class="dp-section-label">Fields</div><div class="kv-list">` + (nonNull.length ? nonNull : recKeys).map(k => kvRow(k, auditFmtVal(rec[k]))).join('') + `</div>`;
+      if (nonNull.length && nulls.length) html += `<details class="dp-more"><summary>${nulls.length} empty field${nulls.length > 1 ? 's' : ''}</summary><div class="kv-list">` + nulls.map(k => kvRow(k, auditFmtVal(rec[k]), 'dimrow')).join('') + `</div></details>`;
+    } else {
+      html += `<div class="dp-empty-detail muted">No field payload recorded.</div>`;
+    }
+  } else {
+    const rec = Object.keys(after).length ? after : before;
+    const recKeys = Object.keys(rec);
+    if (recKeys.length) {
+      html += `<div class="dp-section-label">Details</div><div class="kv-list">` + recKeys.map(k => kvRow(k, auditFmtVal(rec[k]))).join('') + `</div>`;
+    } else {
+      html += `<div class="dp-empty-detail muted">No additional detail for this event.</div>`;
+    }
+  }
+  return html;
 }
 
 function auditActionClass(action) {
