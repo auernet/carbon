@@ -87,7 +87,7 @@ None. The previous handoff (HANDOFF.md at project root) is from sweep #14+#15 an
 - `GET /api/v1/deployments/<deployment_uuid>` returns `finished_at` (null until done) plus a `logs` field with stdout/stderr from the build
 - **There is no `POST /api/v1/applications/<uuid>/storages` endpoint** — that lives only in the UI
 
-**Token in the clear in this session:** Coolify API token `4|9uXrm5eOwdc9a4UO7nR0WaJzcbbVZCqcOfqmJfy8048f6da8` was hardcoded in shell commands. It's a long-lived API token. Worth rotating once everything is stable, or moving to `keychain find-generic-password -s coolify-api`.
+**Coolify API token (REDACTED 2026-06-01):** a long-lived token was previously pasted here in the clear — it has been removed from the repo. **Rotate it in Coolify** (revoke the old one, create a new one), then store the new value in the macOS keychain (`security add-generic-password -s coolify-api -a ben -w <token>`) and read it from there — never paste it into docs or shell commands again.
 
 ## §6 Resume protocol
 
