@@ -92,6 +92,7 @@ const api = {
   createAccount:      (body) => jsonReq('POST', '/api/ledger/accounts', body),
   updateAccount:      (eid, code, body) => jsonReq('PUT', '/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, body),
   deleteAccount:      (eid, code) => fetch('/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
+  ledgerAging:        (eid, asOf) => fetch('/api/ledger/aging?entity_id=' + eid + (asOf ? '&as_of=' + asOf : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3627,6 +3628,19 @@ function priorWindow(mode, now) {
 }
 if (typeof window !== 'undefined') window.__priorWindow = (mode, isoNow) => priorWindow(mode, new Date(isoNow + 'T12:00:00'));
 
+function renderLedgerAging(elId, data, peopleLabel) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!data || data.total <= 0) { el.innerHTML = '<div class="muted dash-empty">Nothing outstanding.</div>'; return; }
+  const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const b = data.buckets;
+  const buckets = [['Current', 'current'], ['1–30 days', 'd1_30'], ['31–60 days', 'd31_60'], ['61–90 days', 'd61_90'], ['90+ days', 'd90_plus']]
+    .map(([lbl, k]) => `<tr><td>${lbl}</td><td class="num">${fmt(b[k])}</td></tr>`).join('');
+  const top = (data.contacts || []).slice(0, 4).map(c => `<tr><td class="muted">${escapeHtml(c.name)}</td><td class="num">${fmt(c.total)}</td></tr>`).join('');
+  el.innerHTML = `<table><tbody>${buckets}<tr style="border-top:2px solid var(--border)"><td><strong>Total outstanding</strong></td><td class="num"><strong>${fmt(b.total)}</strong></td></tr></tbody></table>`
+    + (top ? `<div class="muted" style="font-size:11px;margin:10px 0 4px">By ${peopleLabel}</div><table><tbody>${top}</tbody></table>` : '');
+}
+
 async function loadLedger() {
   const sel = document.getElementById('ledger-entity');
   if (sel && !sel.options.length) {
@@ -3659,6 +3673,7 @@ async function loadLedger() {
   const bsAsOfLabel = to || 'today';
   const prior = priorWindow(per && per.value, now); // null for "All time"
 
+  const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => null); // isolated: aging failure won't blank the statements
   const fetches = [api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid, from, to)];
   if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
   const [tb, entries, st, stPrior] = await Promise.all(fetches);
@@ -3702,6 +3717,11 @@ async function loadLedger() {
     + `<tr><td class="muted">Net income (retained)</td><td class="num">${fmt(st.bs.netIncome)}</td></tr>`
     + `<tr style="border-top:2px solid var(--border)"><td>Liabilities + Equity + Net</td><td class="num">${fmt(st.bs.liabilities + st.bs.equity + st.bs.netIncome)}</td></tr></tbody></table>`
     + (st.bs.balanced ? '<div style="color:var(--accent-2);font-size:12px;margin-top:6px">✓ Assets = Liabilities + Equity</div>' : '<div style="color:var(--danger);font-size:12px;margin-top:6px">✗ does not balance</div>');
+
+  // AR / AP aging (outstanding invoices as of the period end date)
+  const ag = await agingP;
+  renderLedgerAging('ledger-ar-aging', ag && ag.ar, 'customer');
+  renderLedgerAging('ledger-ap-aging', ag && ag.ap, 'supplier');
 
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';

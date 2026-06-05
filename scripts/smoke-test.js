@@ -105,6 +105,13 @@ async function waitForServer() {
   await page.waitForFunction(() => { const d = document.getElementById('accounts-dialog'); return d && d.open && d.querySelector('#acc-list table'); }, { timeout: 6000 }).catch(() => fail('manage-accounts dialog did not open'));
   if (await page.$('#app-error-bar')) fail('error banner appeared opening manage-accounts');
 
+  // AR/AP aging cards must render something (table or empty-state)
+  const aging = await page.evaluate(() => {
+    const ar = document.getElementById('ledger-ar-aging'), ap = document.getElementById('ledger-ap-aging');
+    return !!(ar && ar.textContent.trim() && ap && ap.textContent.trim());
+  });
+  if (!aging) fail('AR/AP aging cards did not render');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();

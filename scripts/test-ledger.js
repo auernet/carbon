@@ -201,6 +201,23 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if ((await api('GET', '/api/ledger/accounts?entity_id=1')).find(a => a.code === '6001')) die('empty custom account was not deleted');
   ok('account guards: system + in-use protected, archive hides, empty custom deletes');
 
+  // 19) AR/AP aging — outstanding invoices bucket by age (delta-based, robust to prior state)
+  const ag0 = await api('GET', `/api/ledger/aging?entity_id=1&as_of=${TODAY}`);
+  await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'sales', issue_date: '2026-01-01', due_date: '2026-01-15', lines: [{ description: 'aging 90+', quantity: 1, unit_price: 1234, tax_rate: 0 }] });
+  const curAr = await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'sales', issue_date: TODAY, due_date: '2026-12-31', lines: [{ description: 'aging current', quantity: 1, unit_price: 567, tax_rate: 0 }] });
+  await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'purchase', issue_date: '2026-04-01', due_date: '2026-04-20', external_number: 'AGE-AP', lines: [{ description: 'aging AP', quantity: 1, unit_price: 800, tax_rate: 0 }] });
+  const ag1 = await api('GET', `/api/ledger/aging?entity_id=1&as_of=${TODAY}`);
+  if (dd(ag1.ar.buckets.d90_plus - ag0.ar.buckets.d90_plus) !== 1234) die(`aging: 90+ delta ${dd(ag1.ar.buckets.d90_plus - ag0.ar.buckets.d90_plus)} != 1234`);
+  if (dd(ag1.ar.buckets.current - ag0.ar.buckets.current) !== 567) die(`aging: current delta != 567`);
+  if (dd(ag1.ap.buckets.d31_60 - ag0.ap.buckets.d31_60) !== 800) die(`aging: AP 31–60 delta != 800`);
+  ok('aging: invoices bucket by age (AR 90+ / current, AP 31–60), base currency');
+
+  // 20) A fully-paid invoice drops out of aging
+  await api('POST', `/api/invoices/${curAr.id}/payments`, { amount: 567, paid_on: TODAY });
+  const ag2 = await api('GET', `/api/ledger/aging?entity_id=1&as_of=${TODAY}`);
+  if (dd(ag1.ar.buckets.current - ag2.ar.buckets.current) !== 567) die(`aging: paying did not clear current bucket (delta ${dd(ag1.ar.buckets.current - ag2.ar.buckets.current)})`);
+  ok('aging: a fully-paid invoice drops out of receivables');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

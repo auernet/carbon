@@ -3117,6 +3117,47 @@ app.get('/api/ledger/statements', (req, res) => {
   });
 });
 
+// AR / AP aging — outstanding invoice balances bucketed by age as of a date,
+// split by direction with a per-contact breakdown. (Distinct from the simpler
+// per-entity /api/reports/aging used by the Reports tab.)
+// Ages by due_date (falls back to issue_date); base-currency amounts.
+app.get('/api/ledger/aging', (req, res) => {
+  const eid = Number(req.query.entity_id) || null;
+  const asOf = /^\d{4}-\d{2}-\d{2}$/.test(req.query.as_of || '') ? req.query.as_of : new Date().toISOString().slice(0, 10);
+  const rows = db.prepare(`
+    SELECT i.direction, i.contact_id, c.display_name AS contact,
+           i.total, i.amount_paid, i.fx_rate_to_base, i.due_date, i.issue_date
+      FROM invoices i
+      LEFT JOIN contacts c ON c.id = i.contact_id
+     WHERE i.status NOT IN ('draft', 'void')
+       AND (i.total - IFNULL(i.amount_paid, 0)) > 0.005
+       AND i.issue_date <= @asOf
+       ${eid ? 'AND i.entity_id=@eid' : ''}
+  `).all(eid ? { eid, asOf } : { asOf });
+
+  const blank = () => ({ current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0, total: 0 });
+  const side = { sales: { buckets: blank(), byContact: {} }, purchase: { buckets: blank(), byContact: {} } };
+  const asOfMs = new Date(asOf + 'T00:00:00').getTime();
+  for (const r of rows) {
+    const outstanding = round2((r.total - (r.amount_paid || 0)) * (r.fx_rate_to_base || 1));
+    if (outstanding <= 0) continue;
+    const ref = r.due_date || r.issue_date;
+    const days = ref ? Math.floor((asOfMs - new Date(ref + 'T00:00:00').getTime()) / 86400000) : 0;
+    const bucket = days > 90 ? 'd90_plus' : days > 60 ? 'd61_90' : days > 30 ? 'd31_60' : days > 0 ? 'd1_30' : 'current';
+    const s = side[r.direction === 'purchase' ? 'purchase' : 'sales'];
+    s.buckets[bucket] += outstanding; s.buckets.total += outstanding;
+    const name = r.contact || ('#' + r.contact_id);
+    (s.byContact[name] = s.byContact[name] || blank());
+    s.byContact[name][bucket] += outstanding; s.byContact[name].total += outstanding;
+  }
+  const pack = (s) => {
+    for (const k in s.buckets) s.buckets[k] = round2(s.buckets[k]);
+    const contacts = Object.entries(s.byContact).map(([name, b]) => { for (const k in b) b[k] = round2(b[k]); return { name, ...b }; }).sort((a, b) => b.total - a.total);
+    return { buckets: s.buckets, total: s.buckets.total, contacts };
+  };
+  res.json({ as_of: asOf, ar: pack(side.sales), ap: pack(side.purchase) });
+});
+
 // ==================================================================
 // Aspire adapter (Connect API — Bank Feed)
 // Docs: https://aspireapp.com/hk/api
