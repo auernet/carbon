@@ -2150,12 +2150,24 @@ app.post('/api/bank-transactions/:id/match', (req, res) => {
     const inv = db.prepare('SELECT id FROM invoices WHERE id = ?').get(invoiceId);
     if (!inv) return res.status(400).json({ error: 'unknown invoice' });
   }
+  const prevInvoiceId = tx.matched_invoice_id || null;
   db.prepare(
     `UPDATE bank_transactions SET matched_invoice_id = ?, reconciled = ? WHERE id = ?`
   ).run(invoiceId, invoiceId ? 1 : 0, id);
-  // also flip the invoice status to paid when we link payment
+  // flip the invoice status to paid when we link a payment
   if (invoiceId && req.body && req.body.mark_invoice_paid !== false) {
     db.prepare(`UPDATE invoices SET status='paid', updated_at=datetime('now') WHERE id=?`).run(invoiceId);
+  }
+  // When unmatching (or re-matching to a different invoice), revert the previously
+  // matched invoice so it doesn't stay stuck on 'paid' with no payment behind it.
+  // Keep 'paid' only if real recorded payments still cover the total; never touch void.
+  if (prevInvoiceId && prevInvoiceId !== invoiceId) {
+    const prev = db.prepare('SELECT total, status FROM invoices WHERE id = ?').get(prevInvoiceId);
+    if (prev && prev.status !== 'void') {
+      const paid = db.prepare('SELECT COALESCE(SUM(amount), 0) AS s FROM invoice_payments WHERE invoice_id = ?').get(prevInvoiceId).s;
+      const reverted = (paid >= prev.total && prev.total > 0) ? 'paid' : 'sent';
+      db.prepare(`UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?`).run(reverted, prevInvoiceId);
+    }
   }
   const after = db.prepare('SELECT * FROM bank_transactions WHERE id = ?').get(id);
   audit('bank_transactions', id, 'match', tx, after);
