@@ -100,6 +100,11 @@ async function waitForServer() {
   await page.waitForFunction(() => { const h = document.querySelector('#ledger-pl table thead'); return h && /prev month/.test(h.textContent); }, { timeout: 6000 }).catch(() => fail('comparative P&L (prior-period column) did not render'));
   if (await page.$('#app-error-bar')) fail('error banner appeared rendering comparative P&L');
 
+  // Chart-of-accounts management dialog must open and list accounts
+  await page.click('#btn-manage-accounts');
+  await page.waitForFunction(() => { const d = document.getElementById('accounts-dialog'); return d && d.open && d.querySelector('#acc-list table'); }, { timeout: 6000 }).catch(() => fail('manage-accounts dialog did not open'));
+  if (await page.$('#app-error-bar')) fail('error banner appeared opening manage-accounts');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();

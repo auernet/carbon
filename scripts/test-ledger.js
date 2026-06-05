@@ -176,6 +176,31 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (!st19.bs.balanced || !st20.bs.balanced) die('period balance sheet does not balance');
   ok('period filtering: empty 2019 window, isolated 2020 P&L, cumulative as-of balance sheet, balanced');
 
+  // 17) Chart of accounts — create a custom account and post to it
+  await api('POST', '/api/ledger/accounts', { entity_id: 1, code: '6000', name: 'Marketing', category: 'E' });
+  let dupRej = false;
+  try { await api('POST', '/api/ledger/accounts', { entity_id: 1, code: '6000', name: 'Dup', category: 'E' }); } catch (e) { dupRej = /already exists/.test(e.message); }
+  if (!dupRej) die('duplicate account code was not rejected');
+  await api('POST', '/api/ledger/journal', { entity_id: 1, event_date: TODAY, description: 'Mktg spend', lines: [{ account_code: '6000', direction: 'debit', amount: 250 }, { account_code: '1000', direction: 'credit', amount: 250 }] });
+  t = await tb();
+  if (!t.balanced) die('after posting to custom account not balanced');
+  if (acct(t, '6000').debit < 250) die('custom account 6000 not debited in trial balance');
+  ok('create custom account + post to it (balanced, shows in trial balance)');
+
+  // 18) Account guards: system + in-use protected; archive hides; empty custom deletes
+  let sysGuard = false;
+  try { await api('DELETE', '/api/ledger/accounts/1100?entity_id=1'); } catch (e) { sysGuard = /system/.test(e.message); }
+  if (!sysGuard) die('deleting a system account was not blocked');
+  let postGuard = false;
+  try { await api('DELETE', '/api/ledger/accounts/6000?entity_id=1'); } catch (e) { postGuard = /postings/.test(e.message); }
+  if (!postGuard) die('deleting an in-use account was not blocked');
+  await api('PUT', '/api/ledger/accounts/6000?entity_id=1', { archived: 1 });
+  if ((await api('GET', '/api/ledger/accounts?entity_id=1')).find(a => a.code === '6000')) die('archived account still listed as active');
+  await api('POST', '/api/ledger/accounts', { entity_id: 1, code: '6001', name: 'Temp', category: 'E' });
+  await api('DELETE', '/api/ledger/accounts/6001?entity_id=1');
+  if ((await api('GET', '/api/ledger/accounts?entity_id=1')).find(a => a.code === '6001')) die('empty custom account was not deleted');
+  ok('account guards: system + in-use protected, archive hides, empty custom deletes');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

@@ -334,6 +334,7 @@ tbody tr:hover {
   background: var(--panel-2);
 }
 tbody tr.acct-row { cursor: pointer; }
+#acc-list, #ad-body { max-height: 52vh; overflow: auto; }
 
 td .pill {
   display: inline-block;

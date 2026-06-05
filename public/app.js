@@ -89,6 +89,9 @@ const api = {
   ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
   ledgerStatements:   (eid, from, to) => fetch('/api/ledger/statements?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
   ledgerAccount:      (eid, code, from, to) => fetch('/api/ledger?entity_id=' + eid + '&account=' + encodeURIComponent(code) + (from ? '&since=' + from : '') + (to ? '&until=' + to : '')).then(r => r.json()),
+  createAccount:      (body) => jsonReq('POST', '/api/ledger/accounts', body),
+  updateAccount:      (eid, code, body) => jsonReq('PUT', '/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, body),
+  deleteAccount:      (eid, code) => fetch('/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3642,6 +3645,8 @@ async function loadLedger() {
   // period selector → from/to date window (balance sheet is "as of" the `to` date)
   const per = document.getElementById('ledger-period');
   if (per && !per._wired) { per._wired = true; per.addEventListener('change', loadLedger); }
+  const mgmtBtn = document.getElementById('btn-manage-accounts');
+  if (mgmtBtn && !mgmtBtn._wired) { mgmtBtn._wired = true; mgmtBtn.addEventListener('click', openAccountsDialog); }
   const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const now = new Date(); let from = null, to = null;
   switch (per && per.value) {
@@ -3775,6 +3780,76 @@ async function openAccountDialog(eid, code, name, category, from, to) {
     : '<div class="muted dash-empty">No entries in this period.</div>';
   _adExport = rows.length ? () => downloadCSV(`carbon-account-${code}-${from || 'all'}-${to || 'all'}.csv`, ['Date', 'Description', 'Debit', 'Credit', 'Balance'], csvRows) : null;
   document.getElementById('ad-export').style.display = rows.length ? '' : 'none';
+}
+
+// ---------- chart of accounts management ----------
+const ACC_CAT = { A: 'Asset', L: 'Liability', Eq: 'Equity', I: 'Income', E: 'Expense' };
+let _accWired = false;
+async function openAccountsDialog() {
+  const sel = document.getElementById('ledger-entity');
+  if (!sel || !sel.value) { toast('Pick an entity first', 'warn'); return; }
+  const dlg = document.getElementById('accounts-dialog');
+  if (!_accWired) {
+    _accWired = true;
+    document.getElementById('acc-close').addEventListener('click', () => dlg.close());
+    document.getElementById('acc-add').addEventListener('click', addAccount);
+  }
+  if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+  await renderAccountsList();
+}
+async function renderAccountsList() {
+  const eid = document.getElementById('ledger-entity').value;
+  const list = document.getElementById('acc-list');
+  list.innerHTML = '<div class="muted dash-empty">Loading…</div>';
+  let accts = [];
+  try { accts = await api.ledgerAccounts(eid); } catch (e) { list.innerHTML = `<div class="muted">${escapeHtml(e.message)}</div>`; return; }
+  const byCode = new Map(accts.map(a => [a.code, a]));
+  list.innerHTML = `<table class="line-table"><thead><tr><th>Code</th><th>Name</th><th>Type</th><th></th></tr></thead><tbody>`
+    + accts.map(a => `<tr>
+        <td>${escapeHtml(a.code)}</td>
+        <td><input class="acc-name" data-code="${escapeHtml(a.code)}" value="${escapeHtml(a.name)}" style="width:100%"></td>
+        <td class="muted">${ACC_CAT[a.category] || a.category}</td>
+        <td class="row-actions"><button class="acc-del danger" data-code="${escapeHtml(a.code)}" title="Archive or delete">×</button></td>
+      </tr>`).join('')
+    + `</tbody></table>`;
+  list.querySelectorAll('.acc-name').forEach(inp => {
+    const save = async () => {
+      const code = inp.dataset.code, name = inp.value.trim();
+      if (!name || name === byCode.get(code)?.name) return;
+      try { await api.updateAccount(eid, code, { name }); toast('Renamed', 'ok'); byCode.get(code).name = name; }
+      catch (e) { toast(e.message, 'error'); renderAccountsList(); }
+    };
+    inp.addEventListener('blur', save);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+  });
+  list.querySelectorAll('.acc-del').forEach(btn => btn.addEventListener('click', async () => {
+    const code = btn.dataset.code;
+    try { await api.deleteAccount(eid, code); toast('Account deleted', 'ok'); renderAccountsList(); }
+    catch (e) {
+      if (/postings/.test(e.message)) {
+        if (await uiConfirm(`${code} has postings, so it can't be deleted. Hide it from pickers (kept in history)?`)) {
+          try { await api.updateAccount(eid, code, { archived: 1 }); toast('Account archived', 'ok'); renderAccountsList(); }
+          catch (e2) { toast(e2.message, 'error'); }
+        }
+      } else { toast(e.message, 'error'); }
+    }
+  }));
+}
+async function addAccount() {
+  const eid = document.getElementById('ledger-entity').value;
+  const body = {
+    entity_id: Number(eid),
+    code: document.getElementById('acc-new-code').value.trim(),
+    name: document.getElementById('acc-new-name').value.trim(),
+    category: document.getElementById('acc-new-cat').value,
+  };
+  try {
+    await api.createAccount(body);
+    document.getElementById('acc-new-code').value = '';
+    document.getElementById('acc-new-name').value = '';
+    toast('Account added', 'ok');
+    renderAccountsList();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ---------- manual journal entry dialog ----------

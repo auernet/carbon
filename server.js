@@ -2927,6 +2927,71 @@ app.get('/api/ledger/accounts', (req, res) => {
     : db.prepare('SELECT * FROM chart_of_accounts WHERE archived=0 ORDER BY entity_id, display_order, code').all();
   res.json(rows);
 });
+
+// --- chart of accounts management (custom accounts; the posting engine's own
+//     accounts are protected — renamable, but not recategorisable/archivable/deletable) ---
+const SYSTEM_ACCOUNTS = new Set(STARTER_ACCOUNTS.map(a => a[0]));
+const acctHasEntries = (eid, code) => !!db.prepare('SELECT 1 FROM ledger_entries WHERE entity_id=? AND account_code=? LIMIT 1').get(eid, code);
+const loadAccount = (eid, code) => db.prepare('SELECT * FROM chart_of_accounts WHERE code=? AND entity_id=?').get(code, eid);
+
+app.post('/api/ledger/accounts', (req, res) => {
+  const eid = Number(req.body.entity_id) || null;
+  const code = String(req.body.code || '').trim();
+  const name = String(req.body.name || '').trim();
+  const category = String(req.body.category || '').trim();
+  if (!eid) return res.status(400).json({ error: 'entity_id required' });
+  if (!/^[A-Za-z0-9.\-]{1,12}$/.test(code)) return res.status(400).json({ error: 'code must be 1–12 letters or digits' });
+  if (!name) return res.status(400).json({ error: 'name required' });
+  if (!['A', 'L', 'Eq', 'I', 'E'].includes(category)) return res.status(400).json({ error: 'invalid category' });
+  if (loadAccount(eid, code)) return res.status(409).json({ error: 'an account with that code already exists' });
+  db.prepare('INSERT INTO chart_of_accounts (code, entity_id, category, name, display_order) VALUES (?,?,?,?,?)')
+    .run(code, eid, category, name, Number(req.body.display_order) || 500);
+  const after = loadAccount(eid, code);
+  audit('chart_of_accounts', code, 'insert', null, after);
+  res.json(after);
+});
+
+app.put('/api/ledger/accounts/:code', (req, res) => {
+  const eid = Number(req.query.entity_id || req.body.entity_id) || null;
+  const code = String(req.params.code || '').trim();
+  if (!eid) return res.status(400).json({ error: 'entity_id required' });
+  const before = loadAccount(eid, code);
+  if (!before) return res.status(404).json({ error: 'account not found' });
+  const sys = SYSTEM_ACCOUNTS.has(code);
+  const b = req.body || {}, fields = {};
+  if (b.name != null) { const n = String(b.name).trim(); if (!n) return res.status(400).json({ error: 'name cannot be empty' }); fields.name = n; }
+  if (b.category != null && b.category !== before.category) {
+    if (sys) return res.status(400).json({ error: 'cannot recategorise a system account' });
+    if (acctHasEntries(eid, code)) return res.status(400).json({ error: 'cannot recategorise an account that already has postings' });
+    if (!['A', 'L', 'Eq', 'I', 'E'].includes(String(b.category))) return res.status(400).json({ error: 'invalid category' });
+    fields.category = b.category;
+  }
+  if (b.archived != null) {
+    const arch = b.archived ? 1 : 0;
+    if (arch && sys) return res.status(400).json({ error: 'cannot archive a system account' });
+    fields.archived = arch;
+  }
+  if (!Object.keys(fields).length) return res.status(400).json({ error: 'nothing to update' });
+  const sets = Object.keys(fields).map(k => `${k}=@${k}`).join(', ');
+  db.prepare(`UPDATE chart_of_accounts SET ${sets} WHERE code=@code AND entity_id=@eid`).run({ ...fields, code, eid });
+  const after = loadAccount(eid, code);
+  audit('chart_of_accounts', code, 'update', before, after);
+  res.json(after);
+});
+
+app.delete('/api/ledger/accounts/:code', (req, res) => {
+  const eid = Number(req.query.entity_id) || null;
+  const code = String(req.params.code || '').trim();
+  if (!eid) return res.status(400).json({ error: 'entity_id required' });
+  const before = loadAccount(eid, code);
+  if (!before) return res.status(404).json({ error: 'account not found' });
+  if (SYSTEM_ACCOUNTS.has(code)) return res.status(400).json({ error: 'system accounts cannot be deleted — archive instead' });
+  if (acctHasEntries(eid, code)) return res.status(400).json({ error: 'account has postings — archive it instead of deleting' });
+  db.prepare('DELETE FROM chart_of_accounts WHERE code=? AND entity_id=?').run(code, eid);
+  audit('chart_of_accounts', code, 'delete', before, null);
+  res.json({ ok: true });
+});
+
 app.get('/api/ledger', (req, res) => {
   const cond = [], args = {};
   if (req.query.entity_id) { cond.push('le.entity_id=@eid'); args.eid = Number(req.query.entity_id); }

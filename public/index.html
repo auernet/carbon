@@ -795,7 +795,8 @@
           <option value="ytd">Year to date</option>
           <option value="lastyear">Last year</option>
         </select></label>
-        <button id="btn-new-journal" class="primary" style="margin-left:auto">+ Journal entry</button>
+        <button id="btn-manage-accounts" style="margin-left:auto">Manage accounts</button>
+        <button id="btn-new-journal" class="primary">+ Journal entry</button>
       </div>
       <div class="dash-grid">
         <div class="dash-card">
@@ -1308,6 +1309,30 @@
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button type="button" id="je-cancel">Cancel</button>
         <button type="button" id="je-save" class="primary">Post entry</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="accounts-dialog">
+    <form method="dialog">
+      <h2>Chart of accounts</h2>
+      <p class="muted" style="font-size:12px;margin:-4px 0 12px">Rename any account. System accounts (used by auto-posting) can't be archived or deleted. Custom accounts with no postings can be deleted; otherwise archive to hide them.</p>
+      <div id="acc-list"></div>
+      <h3 style="margin-top:18px;font-size:13px">Add an account</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label>Code <input id="acc-new-code" maxlength="12" style="width:90px" placeholder="6000"></label>
+        <label style="flex:1;min-width:160px">Name <input id="acc-new-name" placeholder="e.g. Marketing" style="width:100%"></label>
+        <label>Type <select id="acc-new-cat">
+          <option value="A">Asset</option>
+          <option value="L">Liability</option>
+          <option value="Eq">Equity</option>
+          <option value="I">Income</option>
+          <option value="E" selected>Expense</option>
+        </select></label>
+        <button type="button" id="acc-add" class="primary">Add</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button type="button" id="acc-close" class="primary">Done</button>
       </div>
     </form>
   </dialog>
