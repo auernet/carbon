@@ -13,7 +13,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const auditCtx = new AsyncLocalStorage();
 
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.CARBON_DATA_DIR ? path.resolve(process.env.CARBON_DATA_DIR) : path.join(ROOT, 'data');
 const DB_PATH = path.join(DATA_DIR, 'carbon.db');
 const SCHEMA_PATH = path.join(ROOT, 'db', 'schema.sql');
 const SEED_PATH = path.join(ROOT, 'db', 'seed.sql');
