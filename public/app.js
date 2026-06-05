@@ -1,5 +1,22 @@
 // Carbon UI — vanilla JS, no build step.
 
+// --- Boot/runtime error surfacing -------------------------------------------
+// A single uncaught error must never leave a silent blank screen again
+// (see the 2026-05-30 blank-dashboard boot bug). Show a visible banner + log.
+function showAppError(msg) {
+  let bar = document.getElementById('app-error-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'app-error-bar';
+    bar.setAttribute('role', 'alert');
+    bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#7f1d1d;color:#fff;font:13px/1.45 system-ui,-apple-system,sans-serif;padding:10px 16px';
+    (document.body || document.documentElement).appendChild(bar);
+  }
+  bar.textContent = '⚠ ' + msg + ' — reload the page, or open the console for details.';
+}
+window.addEventListener('error', (e) => showAppError('Something broke: ' + (e.message || 'script error')));
+window.addEventListener('unhandledrejection', (e) => showAppError('Background error: ' + ((e.reason && e.reason.message) || e.reason || 'unknown')));
+
 const api = {
   jurisdictions: () => fetch('/api/jurisdictions').then(r => r.json()),
   createJurisdiction: (body) => fetch('/api/jurisdictions', {
@@ -4264,6 +4281,7 @@ function openGlobalSearch() {
 
 // ---------- boot ----------
 (async function init() {
+  try {
   await loadMe();
   const [j, e, c] = await Promise.all([api.jurisdictions(), api.entities(), api.contacts()]);
   state.jurisdictions = j;
@@ -4400,6 +4418,10 @@ function openGlobalSearch() {
     await loadDashboard();
   }
   wireDropzones();
+  } catch (err) {
+    console.error('init() failed to complete:', err);
+    showAppError('Carbon did not finish loading: ' + ((err && err.message) || err));
+  }
 })();
 
 // ---------- styled in-app dialogs (replace native confirm/alert/prompt) ----------
