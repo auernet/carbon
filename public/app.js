@@ -3600,6 +3600,18 @@ async function saveBankTx() {
 }
 
 // ---------- ledger tab ----------
+// ---------- CSV export (client-side, from the exact figures on screen) ----------
+function csvCell(v) { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function buildCSV(header, rows) { return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n'); }
+function downloadCSV(filename, header, rows) {
+  const blob = new Blob([buildCSV(header, rows)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename.replace(/[^\w.-]+/g, '-');
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+if (typeof window !== 'undefined') window.__buildCSV = buildCSV; // smoke hook
+
 async function loadLedger() {
   const sel = document.getElementById('ledger-entity');
   if (sel && !sel.options.length) {
@@ -3640,7 +3652,7 @@ async function loadLedger() {
 
   // P&L (income statement) — flows over [from, to]
   const plEl = document.getElementById('ledger-pl');
-  if (plEl) plEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">${plPeriodLabel}</div><table><tbody>`
+  if (plEl) plEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:12px">${plPeriodLabel}</span><button data-export="pl" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><tbody>`
     + (st.pl.rows.length ? st.pl.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, from, to)}><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
     + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
     + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
@@ -3650,7 +3662,7 @@ async function loadLedger() {
   const bsEl = document.getElementById('ledger-bs');
   const section = (label, cat, total) => `<tr><td><strong>${label}</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr>`
     + st.bs.rows.filter(r => r.category === cat).map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, null, to)}><td class="muted">${escapeHtml(r.name)}</td><td class="num">${fmt(r.amount)}</td></tr>`).join('');
-  if (bsEl) bsEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">As of ${bsAsOfLabel}</div><table><tbody>`
+  if (bsEl) bsEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:12px">As of ${bsAsOfLabel}</span><button data-export="bs" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><tbody>`
     + section('Assets', 'A', st.bs.assets)
     + section('Liabilities', 'L', st.bs.liabilities)
     + section('Equity', 'Eq', st.bs.equity)
@@ -3661,7 +3673,7 @@ async function loadLedger() {
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
   } else {
-    trialEl.innerHTML = `<table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
+    trialEl.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button data-export="trial" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
       + tb.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.account_code, r.account_name, r.category, null, null)}><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
       + `<tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Totals</strong></td><td class="num"><strong>${fmt(tb.totalDebit)}</strong></td><td class="num"><strong>${fmt(tb.totalCredit)}</strong></td></tr></tbody></table>`;
   }
@@ -3684,14 +3696,34 @@ async function loadLedger() {
     const d = tr.dataset;
     openAccountDialog(eid, d.acct, d.name, d.cat, d.since || null, d.until || null);
   }));
+
+  // CSV export buttons — built from the exact figures rendered above
+  const stamp = `${eid}-${from || 'all'}-${to || iso(now)}`;
+  const SEC = { A: 'Assets', L: 'Liabilities', Eq: 'Equity' };
+  const exporters = {
+    pl: () => downloadCSV(`carbon-pl-${stamp}.csv`, ['Account', 'Type', 'Amount'],
+      st.pl.rows.map(r => [r.name || r.code, r.category === 'I' ? 'Income' : 'Expense', r.amount])
+        .concat([['Income', '', st.pl.income], ['Expenses', '', st.pl.expenses], ['Net', '', st.pl.net]])),
+    bs: () => downloadCSV(`carbon-balance-sheet-${eid}-${to || iso(now)}.csv`, ['Account', 'Section', 'Amount'],
+      st.bs.rows.map(r => [r.name, SEC[r.category] || '', r.amount])
+        .concat([['Net income (retained)', 'Equity', st.bs.netIncome], ['Assets total', '', st.bs.assets], ['Liabilities total', '', st.bs.liabilities], ['Equity total', '', st.bs.equity]])),
+    trial: () => downloadCSV(`carbon-trial-balance-${eid}.csv`, ['Code', 'Account', 'Type', 'Debit', 'Credit'],
+      tb.rows.map(r => [r.account_code, r.account_name || '', CAT[r.category] || '', r.debit || 0, r.credit || 0])
+        .concat([['', 'Totals', '', tb.totalDebit, tb.totalCredit]])),
+  };
+  document.querySelectorAll('#tab-ledger [data-export]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); (exporters[b.dataset.export] || (() => {}))(); }));
 }
 
 // ---------- account drill-down dialog ----------
-let _adWired = false;
+let _adWired = false, _adExport = null;
 async function openAccountDialog(eid, code, name, category, from, to) {
   const dlg = document.getElementById('account-dialog');
   if (!dlg) return;
-  if (!_adWired) { _adWired = true; document.getElementById('ad-close').addEventListener('click', () => dlg.close()); }
+  if (!_adWired) {
+    _adWired = true;
+    document.getElementById('ad-close').addEventListener('click', () => dlg.close());
+    document.getElementById('ad-export').addEventListener('click', () => { if (_adExport) _adExport(); });
+  }
   document.getElementById('ad-title').textContent = `${code} — ${name || ''}`;
   document.getElementById('ad-period').textContent = from ? `${from} → ${to}` : (to ? `As of ${to}` : 'All time');
   const body = document.getElementById('ad-body');
@@ -3703,15 +3735,18 @@ async function openAccountDialog(eid, code, name, category, from, to) {
   const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const debitNormal = category === 'A' || category === 'E';
   rows = rows.slice().reverse(); // API returns newest-first → oldest-first for a running balance
-  let bal = 0;
+  let bal = 0; const csvRows = [];
   const trs = rows.map(e => {
     const amt = Number(e.amount_base) || 0;
     bal += (e.direction === 'debit' ? amt : -amt) * (debitNormal ? 1 : -1);
+    csvRows.push([e.event_date || '', e.description || '', e.direction === 'debit' ? amt : '', e.direction === 'credit' ? amt : '', bal]);
     return `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(amt) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(amt) : ''}</td><td class="num">${fmt(bal)}</td></tr>`;
   }).join('');
   body.innerHTML = rows.length
     ? `<table class="line-table"><thead><tr><th>Date</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>${trs}</tbody></table>`
     : '<div class="muted dash-empty">No entries in this period.</div>';
+  _adExport = rows.length ? () => downloadCSV(`carbon-account-${code}-${from || 'all'}-${to || 'all'}.csv`, ['Date', 'Description', 'Debit', 'Credit', 'Balance'], csvRows) : null;
+  document.getElementById('ad-export').style.display = rows.length ? '' : 'none';
 }
 
 // ---------- manual journal entry dialog ----------

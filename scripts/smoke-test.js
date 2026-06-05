@@ -76,6 +76,14 @@ async function waitForServer() {
   await page.waitForFunction(() => { const d = document.getElementById('account-dialog'); return d && d.open && d.querySelector('#ad-body table, #ad-body .dash-empty'); }, { timeout: 6000 }).catch(() => fail('account drill-down dialog did not open'));
   if (await page.$('#app-error-bar')) fail('error banner appeared opening the account dialog');
 
+  // CSV export: builder escapes correctly + export buttons rendered on the cards
+  const csvCheck = await page.evaluate(() => ({
+    csv: window.__buildCSV(['a', 'b'], [['1', 'x,y']]),
+    buttons: !!document.querySelector('#tab-ledger [data-export="pl"]') && !!document.querySelector('#tab-ledger [data-export="trial"]'),
+  }));
+  if (csvCheck.csv !== 'a,b\r\n1,"x,y"') fail('CSV builder output malformed: ' + JSON.stringify(csvCheck.csv));
+  if (!csvCheck.buttons) fail('CSV export buttons missing from ledger cards');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();
