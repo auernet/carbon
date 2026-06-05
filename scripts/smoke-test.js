@@ -84,6 +84,22 @@ async function waitForServer() {
   if (csvCheck.csv !== 'a,b\r\n1,"x,y"') fail('CSV builder output malformed: ' + JSON.stringify(csvCheck.csv));
   if (!csvCheck.buttons) fail('CSV export buttons missing from ledger cards');
 
+  // Comparative P&L: prior-period date math (pure) + the comparison render path
+  const pw = await page.evaluate(() => ({
+    month: window.__priorWindow('month', '2026-06-15'),
+    ytd: window.__priorWindow('ytd', '2026-06-15'),
+    quarter: window.__priorWindow('quarter', '2026-05-10'),
+    all: window.__priorWindow('all', '2026-06-15'),
+  }));
+  if (!(pw.month && pw.month.from === '2026-05-01' && pw.month.to === '2026-05-31')) fail('priorWindow month wrong: ' + JSON.stringify(pw.month));
+  if (!(pw.ytd && pw.ytd.from === '2025-01-01' && pw.ytd.to === '2025-06-15')) fail('priorWindow ytd wrong: ' + JSON.stringify(pw.ytd));
+  if (!(pw.quarter && pw.quarter.from === '2026-01-01' && pw.quarter.to === '2026-03-31')) fail('priorWindow quarter wrong: ' + JSON.stringify(pw.quarter));
+  if (pw.all !== null) fail('priorWindow "all" should be null');
+  await page.evaluate(() => { const d = document.getElementById('account-dialog'); if (d && d.open) d.close(); });
+  await page.select('#ledger-period', 'month');
+  await page.waitForFunction(() => { const h = document.querySelector('#ledger-pl table thead'); return h && /prev month/.test(h.textContent); }, { timeout: 6000 }).catch(() => fail('comparative P&L (prior-period column) did not render'));
+  if (await page.$('#app-error-bar')) fail('error banner appeared rendering comparative P&L');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();

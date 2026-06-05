@@ -3612,6 +3612,18 @@ function downloadCSV(filename, header, rows) {
 }
 if (typeof window !== 'undefined') window.__buildCSV = buildCSV; // smoke hook
 
+// Prior comparable period for a given period mode (calendar-aligned). Pure → unit-tested.
+function priorWindow(mode, now) {
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const Y = now.getFullYear(), M = now.getMonth(), D = now.getDate();
+  if (mode === 'month')    { const s = new Date(Y, M - 1, 1); return { from: iso(s), to: iso(new Date(Y, M, 0)), label: 'prev month' }; }
+  if (mode === 'quarter')  { const qs = Math.floor(M / 3) * 3; const s = new Date(Y, qs - 3, 1); return { from: iso(s), to: iso(new Date(s.getFullYear(), s.getMonth() + 3, 0)), label: 'prev quarter' }; }
+  if (mode === 'ytd')      { return { from: iso(new Date(Y - 1, 0, 1)), to: iso(new Date(Y - 1, M, D)), label: 'prior YTD' }; }
+  if (mode === 'lastyear') { return { from: iso(new Date(Y - 2, 0, 1)), to: iso(new Date(Y - 2, 11, 31)), label: String(Y - 2) }; }
+  return null;
+}
+if (typeof window !== 'undefined') window.__priorWindow = (mode, isoNow) => priorWindow(mode, new Date(isoNow + 'T12:00:00'));
+
 async function loadLedger() {
   const sel = document.getElementById('ledger-entity');
   if (sel && !sel.options.length) {
@@ -3640,8 +3652,11 @@ async function loadLedger() {
   }
   const plPeriodLabel = from ? `${from} → ${to}` : 'All time';
   const bsAsOfLabel = to || 'today';
+  const prior = priorWindow(per && per.value, now); // null for "All time"
 
-  const [tb, entries, st] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid, from, to)]);
+  const fetches = [api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid, from, to)];
+  if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
+  const [tb, entries, st, stPrior] = await Promise.all(fetches);
 
   if (badge) badge.innerHTML = tb.balanced
     ? '<span style="color:var(--accent-2);font-weight:600">✓ balanced</span>'
@@ -3650,13 +3665,26 @@ async function loadLedger() {
   // each per-account row is clickable → drill into its entries over the figure's own window
   const dataAttrs = (code, name, cat, since, until) => `data-acct="${escapeHtml(code)}" data-name="${escapeHtml(name || '')}" data-cat="${cat || ''}"${since ? ` data-since="${since}"` : ''}${until ? ` data-until="${until}"` : ''}`;
 
-  // P&L (income statement) — flows over [from, to]
+  // P&L (income statement) — flows over [from, to]; vs prior period when one is selected
   const plEl = document.getElementById('ledger-pl');
-  if (plEl) plEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:12px">${plPeriodLabel}</span><button data-export="pl" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><tbody>`
-    + (st.pl.rows.length ? st.pl.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, from, to)}><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
-    + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
-    + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
-    + `<tr style="border-top:2px solid var(--border)"><td><strong>Net ${st.pl.net >= 0 ? 'profit' : 'loss'}</strong></td><td class="num"><strong>${fmt(st.pl.net)}</strong></td></tr></tbody></table>`;
+  const plHead = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:12px">${plPeriodLabel}</span><button data-export="pl" style="font-size:11px;padding:4px 10px">Export CSV</button></div>`;
+  if (plEl && stPrior) {
+    const cur = new Map(st.pl.rows.map(r => [r.code, r])), pri = new Map(stPrior.pl.rows.map(r => [r.code, r]));
+    const codes = [...new Set([...cur.keys(), ...pri.keys()])];
+    const cell = (m, c) => m.get(c) ? fmt(m.get(c).amount) : '—';
+    plEl.innerHTML = plHead
+      + `<table><thead><tr><th>Account</th><th class="num">Current</th><th class="num">${escapeHtml(prior.label)}</th></tr></thead><tbody>`
+      + (codes.length ? codes.map(c => { const r = cur.get(c) || pri.get(c); return `<tr class="acct-row" ${dataAttrs(c, r.name, r.category, from, to)}><td>${escapeHtml(r.name || c)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${cell(cur, c)}</td><td class="num muted">${cell(pri, c)}</td></tr>`; }).join('') : '<tr><td class="muted">No income or expenses.</td><td></td><td></td></tr>')
+      + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td><td class="num muted">${fmt(stPrior.pl.income)}</td></tr>`
+      + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td><td class="num muted">(${fmt(stPrior.pl.expenses)})</td></tr>`
+      + `<tr style="border-top:2px solid var(--border)"><td><strong>Net ${st.pl.net >= 0 ? 'profit' : 'loss'}</strong></td><td class="num"><strong>${fmt(st.pl.net)}</strong></td><td class="num muted">${fmt(stPrior.pl.net)}</td></tr></tbody></table>`;
+  } else if (plEl) {
+    plEl.innerHTML = plHead + `<table><tbody>`
+      + (st.pl.rows.length ? st.pl.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, from, to)}><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
+      + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
+      + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
+      + `<tr style="border-top:2px solid var(--border)"><td><strong>Net ${st.pl.net >= 0 ? 'profit' : 'loss'}</strong></td><td class="num"><strong>${fmt(st.pl.net)}</strong></td></tr></tbody></table>`;
+  }
 
   // Balance sheet
   const bsEl = document.getElementById('ledger-bs');
