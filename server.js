@@ -358,6 +358,124 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notes_entity ON notes(entity_table, entity_id);
 `);
 
+// --- Double-entry ledger (see docs/BRIEF-ledger-2026-06-05.md) ---
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chart_of_accounts (
+    code          TEXT NOT NULL,
+    entity_id     INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    category      TEXT NOT NULL CHECK (category IN ('A','L','Eq','I','E')),
+    name          TEXT NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 100,
+    archived      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (code, entity_id)
+  );
+  CREATE TABLE IF NOT EXISTS ledger_entries (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id    INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    txn_id       TEXT NOT NULL,
+    event_date   TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    direction    TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+    amount       REAL NOT NULL CHECK (amount >= 0),
+    currency     TEXT NOT NULL,
+    amount_base  REAL NOT NULL,
+    description  TEXT,
+    source_table TEXT,
+    source_id    INTEGER,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ledger_txn ON ledger_entries(txn_id);
+  CREATE INDEX IF NOT EXISTS idx_ledger_account ON ledger_entries(entity_id, account_code);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_source ON ledger_entries(source_table, source_id, account_code, direction);
+`);
+
+// Seed a starter chart of accounts for every entity (idempotent).
+const STARTER_ACCOUNTS = [
+  ['1000', 'A', 'Cash', 10], ['1010', 'A', 'Bank', 20], ['1090', 'A', 'Undeposited funds', 30],
+  ['1100', 'A', 'Accounts receivable', 40], ['1200', 'A', 'Input VAT', 50],
+  ['2000', 'L', 'Accounts payable', 60], ['2100', 'L', 'Output VAT', 70],
+  ['3000', 'Eq', "Owner's equity", 80],
+  ['4000', 'I', 'Revenue', 90], ['5000', 'E', 'Expenses', 100], ['7000', 'E', 'FX gain/loss', 110],
+];
+function seedChartOfAccounts() {
+  const ins = db.prepare('INSERT OR IGNORE INTO chart_of_accounts (code, entity_id, category, name, display_order) VALUES (?, ?, ?, ?, ?)');
+  const ents = db.prepare('SELECT id FROM entities').all();
+  const tx = db.transaction(() => {
+    for (const e of ents) for (const [code, cat, name, ord] of STARTER_ACCOUNTS) ins.run(code, e.id, cat, name, ord);
+  });
+  tx();
+}
+seedChartOfAccounts();
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// Rebuild the full ledger footprint for one invoice (header + its payments) from
+// current state. Idempotent: clears prior entries for this invoice, re-posts,
+// and refuses to write an unbalanced transaction. See docs/BRIEF-ledger-2026-06-05.md.
+function postInvoiceFull(invoiceId) {
+  const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+  const clear = db.prepare(
+    `DELETE FROM ledger_entries WHERE (source_table='invoices' AND source_id=?)
+       OR (source_table='invoice_payments' AND source_id IN (SELECT id FROM invoice_payments WHERE invoice_id=?))`
+  );
+  const ins = db.prepare(
+    `INSERT INTO ledger_entries (entity_id, txn_id, event_date, account_code, direction, amount, currency, amount_base, description, source_table, source_id)
+     VALUES (@entity_id, @txn_id, @event_date, @account_code, @direction, @amount, @currency, @amount_base, @description, @source_table, @source_id)`
+  );
+  const run = db.transaction(() => {
+    clear.run(invoiceId, invoiceId);
+    if (!inv || !inv.status || inv.status === 'draft' || inv.status === 'void') return; // nothing posts for drafts/voids
+    const fx = inv.fx_rate_to_base || 1;
+    const sales = inv.direction !== 'purchase';
+    const groups = [];
+
+    // Invoice header
+    const hdr = [];
+    const mk = (code, dir, amt) => ({ code, dir, amount: round2(amt), base: round2(amt * fx) });
+    if (sales) {
+      hdr.push(mk('1100', 'debit', inv.total));
+      hdr.push(mk('4000', 'credit', inv.subtotal));
+      if (inv.tax_total) hdr.push(mk('2100', 'credit', inv.tax_total));
+    } else {
+      hdr.push(mk('5000', 'debit', inv.subtotal));
+      if (inv.tax_total) hdr.push(mk('1200', 'debit', inv.tax_total));
+      hdr.push(mk('2000', 'credit', inv.total));
+    }
+    groups.push({ txn: 'inv-' + invoiceId, date: inv.issue_date || (inv.created_at || '').slice(0, 10), lines: hdr, srcTable: 'invoices', srcId: invoiceId });
+
+    // Each payment
+    for (const p of db.prepare('SELECT * FROM invoice_payments WHERE invoice_id = ?').all(invoiceId)) {
+      const pl = sales
+        ? [mk('1090', 'debit', p.amount), mk('1100', 'credit', p.amount)]
+        : [mk('2000', 'debit', p.amount), mk('1090', 'credit', p.amount)];
+      groups.push({ txn: 'pay-' + p.id, date: p.paid_on || (p.created_at || '').slice(0, 10), lines: pl, srcTable: 'invoice_payments', srcId: p.id });
+    }
+
+    for (const g of groups) {
+      let d = 0, c = 0;
+      for (const l of g.lines) (l.dir === 'debit' ? (d += l.base) : (c += l.base));
+      if (Math.abs(d - c) > 0.01) throw new Error(`ledger imbalance ${g.txn}: D${d} C${c}`);
+      for (const l of g.lines) ins.run({
+        entity_id: inv.entity_id, txn_id: g.txn, event_date: g.date, account_code: l.code,
+        direction: l.dir, amount: l.amount, currency: inv.currency, amount_base: l.base,
+        description: (sales ? 'Invoice ' : 'Bill ') + (inv.number || '#' + invoiceId),
+        source_table: g.srcTable, source_id: g.srcId,
+      });
+    }
+  });
+  try { run(); } catch (e) { console.error('postInvoiceFull failed for', invoiceId, e.message); }
+}
+function clearInvoiceLedger(invoiceId) {
+  db.prepare(
+    `DELETE FROM ledger_entries WHERE (source_table='invoices' AND source_id=?)
+       OR (source_table='invoice_payments' AND source_id IN (SELECT id FROM invoice_payments WHERE invoice_id=?))`
+  ).run(invoiceId, invoiceId);
+}
+// One-time backfill of existing invoices that have no ledger footprint yet.
+for (const r of db.prepare(`SELECT i.id FROM invoices i WHERE NOT EXISTS (SELECT 1 FROM ledger_entries le WHERE le.txn_id = 'inv-' || i.id)`).all()) {
+  postInvoiceFull(r.id);
+}
+
 // Self-heal: purge orphan rows that may have leaked in through manual CLI edits
 // (FK cascade only fires when foreign_keys=ON, which the sqlite3 shell doesn't set by default).
 db.exec(`
@@ -1311,6 +1429,7 @@ app.post('/api/invoices', (req, res) => {
   const id = tx();
   const after = loadInvoice(id);
   audit('invoices', id, 'insert', null, after);
+  postInvoiceFull(id);
   fireWebhook('invoice.created', { id: after.id, number: after.number, currency: after.currency, total: after.total, direction: after.direction });
   res.json(after);
 });
@@ -1384,6 +1503,7 @@ app.put('/api/invoices/:id', (req, res) => {
   tx();
   const after = loadInvoice(id);
   audit('invoices', id, 'update', before, after);
+  postInvoiceFull(id);
   if (before.status !== after.status) {
     if (after.status === 'paid') fireWebhook('invoice.paid', { id: after.id, number: after.number, total: after.total, currency: after.currency });
     if (after.status === 'void') fireWebhook('invoice.void', { id: after.id, number: after.number });
@@ -1430,6 +1550,7 @@ app.post('/api/invoices/:id/duplicate', (req, res) => {
   const newId = tx();
   const after = loadInvoice(newId);
   audit('invoices', newId, 'duplicate', { from: id }, after);
+  postInvoiceFull(newId);
   res.json(after);
 });
 
@@ -1441,10 +1562,12 @@ app.delete('/api/invoices/:id', (req, res) => {
     if (blockIfReferenced('invoices', id, res)) return;
     db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
     audit('invoices', id, 'delete', before, null);
+    clearInvoiceLedger(id);
   } else {
     db.prepare(`UPDATE invoices SET status='void', updated_at = datetime('now') WHERE id = ?`).run(id);
     const after = loadInvoice(id);
     audit('invoices', id, 'void', before, after);
+    postInvoiceFull(id);
   }
   res.json({ ok: true });
 });
@@ -2758,6 +2881,46 @@ app.get('/api/sync/runs', (req, res) => {
   res.json(rows);
 });
 
+// ---------- ledger (double-entry) ----------
+app.get('/api/ledger/accounts', (req, res) => {
+  const eid = Number(req.query.entity_id) || null;
+  const rows = eid
+    ? db.prepare('SELECT * FROM chart_of_accounts WHERE entity_id=? AND archived=0 ORDER BY display_order, code').all(eid)
+    : db.prepare('SELECT * FROM chart_of_accounts WHERE archived=0 ORDER BY entity_id, display_order, code').all();
+  res.json(rows);
+});
+app.get('/api/ledger', (req, res) => {
+  const cond = [], args = {};
+  if (req.query.entity_id) { cond.push('le.entity_id=@eid'); args.eid = Number(req.query.entity_id); }
+  if (req.query.account)   { cond.push('le.account_code=@acc'); args.acc = String(req.query.account); }
+  if (req.query.since)     { cond.push('le.event_date>=@since'); args.since = String(req.query.since); }
+  if (req.query.until)     { cond.push('le.event_date<=@until'); args.until = String(req.query.until); }
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const rows = db.prepare(`
+    SELECT le.*, coa.name AS account_name, coa.category
+      FROM ledger_entries le
+      LEFT JOIN chart_of_accounts coa ON coa.code=le.account_code AND coa.entity_id=le.entity_id
+      ${where}
+     ORDER BY le.event_date DESC, le.txn_id, le.id LIMIT 1000
+  `).all(args);
+  res.json(rows);
+});
+app.get('/api/ledger/trial-balance', (req, res) => {
+  const eid = Number(req.query.entity_id) || null;
+  const rows = db.prepare(`
+    SELECT le.account_code, coa.name AS account_name, coa.category,
+           ROUND(SUM(CASE WHEN le.direction='debit'  THEN le.amount_base ELSE 0 END), 2) AS debit,
+           ROUND(SUM(CASE WHEN le.direction='credit' THEN le.amount_base ELSE 0 END), 2) AS credit
+      FROM ledger_entries le
+      LEFT JOIN chart_of_accounts coa ON coa.code=le.account_code AND coa.entity_id=le.entity_id
+      ${eid ? 'WHERE le.entity_id=@eid' : ''}
+     GROUP BY le.entity_id, le.account_code ORDER BY le.account_code
+  `).all(eid ? { eid } : {});
+  const totalDebit = round2(rows.reduce((s, r) => s + r.debit, 0));
+  const totalCredit = round2(rows.reduce((s, r) => s + r.credit, 0));
+  res.json({ rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 });
+});
+
 // ==================================================================
 // Aspire adapter (Connect API — Bank Feed)
 // Docs: https://aspireapp.com/hk/api
@@ -3120,6 +3283,7 @@ app.post('/api/invoices/:id/payments', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(id, paidOn, amount, body.method || null, body.reference || null, body.notes || null);
   recomputeInvoicePaidStatus(id);
+  postInvoiceFull(id);
   audit('invoice_payments', result.lastInsertRowid, 'insert', null, { invoice_id: id, amount });
   res.json({ id: result.lastInsertRowid, invoice_id: id, paid_on: paidOn, amount });
 });
@@ -3130,6 +3294,7 @@ app.delete('/api/invoices/payments/:pid', (req, res) => {
   if (!before) return res.status(404).json({ error: 'not found' });
   db.prepare('DELETE FROM invoice_payments WHERE id = ?').run(pid);
   recomputeInvoicePaidStatus(before.invoice_id);
+  postInvoiceFull(before.invoice_id);
   audit('invoice_payments', pid, 'delete', before, null);
   res.json({ ok: true });
 });
