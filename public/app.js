@@ -88,6 +88,7 @@ const api = {
   ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
   ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
   ledgerStatements:   (eid, from, to) => fetch('/api/ledger/statements?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
+  ledgerAccount:      (eid, code, from, to) => fetch('/api/ledger?entity_id=' + eid + '&account=' + encodeURIComponent(code) + (from ? '&since=' + from : '') + (to ? '&until=' + to : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3634,10 +3635,13 @@ async function loadLedger() {
     ? '<span style="color:var(--accent-2);font-weight:600">✓ balanced</span>'
     : '<span style="color:var(--danger);font-weight:600">✗ out of balance</span>';
 
-  // P&L (income statement)
+  // each per-account row is clickable → drill into its entries over the figure's own window
+  const dataAttrs = (code, name, cat, since, until) => `data-acct="${escapeHtml(code)}" data-name="${escapeHtml(name || '')}" data-cat="${cat || ''}"${since ? ` data-since="${since}"` : ''}${until ? ` data-until="${until}"` : ''}`;
+
+  // P&L (income statement) — flows over [from, to]
   const plEl = document.getElementById('ledger-pl');
   if (plEl) plEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">${plPeriodLabel}</div><table><tbody>`
-    + (st.pl.rows.length ? st.pl.rows.map(r => `<tr><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
+    + (st.pl.rows.length ? st.pl.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, from, to)}><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
     + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
     + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
     + `<tr style="border-top:2px solid var(--border)"><td><strong>Net ${st.pl.net >= 0 ? 'profit' : 'loss'}</strong></td><td class="num"><strong>${fmt(st.pl.net)}</strong></td></tr></tbody></table>`;
@@ -3645,7 +3649,7 @@ async function loadLedger() {
   // Balance sheet
   const bsEl = document.getElementById('ledger-bs');
   const section = (label, cat, total) => `<tr><td><strong>${label}</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr>`
-    + st.bs.rows.filter(r => r.category === cat).map(r => `<tr><td class="muted">${escapeHtml(r.name)}</td><td class="num">${fmt(r.amount)}</td></tr>`).join('');
+    + st.bs.rows.filter(r => r.category === cat).map(r => `<tr class="acct-row" ${dataAttrs(r.code, r.name, r.category, null, to)}><td class="muted">${escapeHtml(r.name)}</td><td class="num">${fmt(r.amount)}</td></tr>`).join('');
   if (bsEl) bsEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">As of ${bsAsOfLabel}</div><table><tbody>`
     + section('Assets', 'A', st.bs.assets)
     + section('Liabilities', 'L', st.bs.liabilities)
@@ -3658,7 +3662,7 @@ async function loadLedger() {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
   } else {
     trialEl.innerHTML = `<table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
-      + tb.rows.map(r => `<tr><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
+      + tb.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.account_code, r.account_name, r.category, null, null)}><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
       + `<tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Totals</strong></td><td class="num"><strong>${fmt(tb.totalDebit)}</strong></td><td class="num"><strong>${fmt(tb.totalCredit)}</strong></td></tr></tbody></table>`;
   }
 
@@ -3668,11 +3672,46 @@ async function loadLedger() {
     jrnlEl.innerHTML = `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead><tbody>`
       + entries.map(e => { const man = e.source_table === 'manual'; return `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.account_code)} <span class="muted">${escapeHtml(e.account_name || '')}</span></td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(e.amount) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(e.amount) : ''}</td><td class="row-actions">${man ? `<button data-je="${escapeHtml(e.txn_id)}" class="danger" title="Delete this manual entry">×</button>` : ''}</td></tr>`; }).join('')
       + `</tbody></table>`;
-    jrnlEl.querySelectorAll('button[data-je]').forEach(b => b.addEventListener('click', async () => {
+    jrnlEl.querySelectorAll('button[data-je]').forEach(b => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
       if (!await uiConfirm('Delete this manual journal entry?')) return;
       try { await api.deleteJournal(b.dataset.je); toast('Entry deleted', 'ok'); loadLedger(); } catch (e) { toast(e.message, 'error'); }
     }));
   }
+
+  // drill-down: click any account row → its entries with a running balance
+  document.querySelectorAll('#tab-ledger tr.acct-row').forEach(tr => tr.addEventListener('click', () => {
+    const d = tr.dataset;
+    openAccountDialog(eid, d.acct, d.name, d.cat, d.since || null, d.until || null);
+  }));
+}
+
+// ---------- account drill-down dialog ----------
+let _adWired = false;
+async function openAccountDialog(eid, code, name, category, from, to) {
+  const dlg = document.getElementById('account-dialog');
+  if (!dlg) return;
+  if (!_adWired) { _adWired = true; document.getElementById('ad-close').addEventListener('click', () => dlg.close()); }
+  document.getElementById('ad-title').textContent = `${code} — ${name || ''}`;
+  document.getElementById('ad-period').textContent = from ? `${from} → ${to}` : (to ? `As of ${to}` : 'All time');
+  const body = document.getElementById('ad-body');
+  body.innerHTML = '<div class="muted dash-empty">Loading…</div>';
+  if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+  let rows = [];
+  try { rows = await api.ledgerAccount(eid, code, from, to); }
+  catch (e) { body.innerHTML = `<div class="muted">${escapeHtml(e.message || 'Failed to load')}</div>`; return; }
+  const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const debitNormal = category === 'A' || category === 'E';
+  rows = rows.slice().reverse(); // API returns newest-first → oldest-first for a running balance
+  let bal = 0;
+  const trs = rows.map(e => {
+    const amt = Number(e.amount_base) || 0;
+    bal += (e.direction === 'debit' ? amt : -amt) * (debitNormal ? 1 : -1);
+    return `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(amt) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(amt) : ''}</td><td class="num">${fmt(bal)}</td></tr>`;
+  }).join('');
+  body.innerHTML = rows.length
+    ? `<table class="line-table"><thead><tr><th>Date</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>${trs}</tbody></table>`
+    : '<div class="muted dash-empty">No entries in this period.</div>';
 }
 
 // ---------- manual journal entry dialog ----------

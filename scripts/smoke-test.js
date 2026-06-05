@@ -70,6 +70,12 @@ async function waitForServer() {
   await page.waitForFunction(() => { const d = document.getElementById('journal-dialog'); return d && d.open && d.querySelector('.je-acct'); }, { timeout: 6000 }).catch(() => fail('journal entry dialog did not open'));
   if (await page.$('#app-error-bar')) fail('error banner appeared opening the journal dialog');
 
+  // Account drill-down must open and render (catches missing api method / wiring)
+  await page.evaluate(() => { const d = document.getElementById('journal-dialog'); if (d && d.open) d.close(); });
+  await page.click('#tab-ledger tr.acct-row').catch(() => fail('no clickable account row in the ledger'));
+  await page.waitForFunction(() => { const d = document.getElementById('account-dialog'); return d && d.open && d.querySelector('#ad-body table, #ad-body .dash-empty'); }, { timeout: 6000 }).catch(() => fail('account drill-down dialog did not open'));
+  if (await page.$('#app-error-bar')) fail('error banner appeared opening the account dialog');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();

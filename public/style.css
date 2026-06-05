@@ -333,6 +333,7 @@ th {
 tbody tr:hover {
   background: var(--panel-2);
 }
+tbody tr.acct-row { cursor: pointer; }
 
 td .pill {
   display: inline-block;
