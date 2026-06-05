@@ -84,8 +84,8 @@ const api = {
   createEntity:  (body) => jsonReq('POST', '/api/entities', body),
   updateJurisdiction: (code, body) => jsonReq('PUT', '/api/jurisdictions/' + code, body),
   reportPL:      () => fetch('/api/reports/pl').then(r => r.json()),
-  ledgerTrialBalance: (eid) => fetch('/api/ledger/trial-balance?entity_id=' + eid).then(r => r.json()),
-  ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
+  ledgerTrialBalance: (eid, to) => fetch('/api/ledger/trial-balance?entity_id=' + eid + (to ? '&to=' + to : '')).then(r => r.json()),
+  ledgerEntries:      (eid, since, until) => fetch('/api/ledger?entity_id=' + eid + (since ? '&since=' + since : '') + (until ? '&until=' + until : '')).then(r => r.json()),
   ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
   ledgerStatements:   (eid, from, to) => fetch('/api/ledger/statements?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
   ledgerAccount:      (eid, code, from, to) => fetch('/api/ledger?entity_id=' + eid + '&account=' + encodeURIComponent(code) + (from ? '&since=' + from : '') + (to ? '&until=' + to : '')).then(r => r.json()),
@@ -3674,7 +3674,7 @@ async function loadLedger() {
   const prior = priorWindow(per && per.value, now); // null for "All time"
 
   const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => null); // isolated: aging failure won't blank the statements
-  const fetches = [api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid, from, to)];
+  const fetches = [api.ledgerTrialBalance(eid, to), api.ledgerEntries(eid, from, to), api.ledgerStatements(eid, from, to)];
   if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
   const [tb, entries, st, stPrior] = await Promise.all(fetches);
 
@@ -3726,15 +3726,16 @@ async function loadLedger() {
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
   } else {
-    trialEl.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button data-export="trial" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
-      + tb.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.account_code, r.account_name, r.category, null, null)}><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
+    trialEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:12px">As of ${bsAsOfLabel}</span><button data-export="trial" style="font-size:11px;padding:4px 10px">Export CSV</button></div><table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
+      + tb.rows.map(r => `<tr class="acct-row" ${dataAttrs(r.account_code, r.account_name, r.category, null, to)}><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
       + `<tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Totals</strong></td><td class="num"><strong>${fmt(tb.totalDebit)}</strong></td><td class="num"><strong>${fmt(tb.totalCredit)}</strong></td></tr></tbody></table>`;
   }
 
   if (!entries.length) {
-    jrnlEl.innerHTML = '<div class="muted dash-empty">No journal entries.</div>';
+    jrnlEl.innerHTML = from ? '<div class="muted dash-empty">No entries in this period.</div>' : '<div class="muted dash-empty">No journal entries.</div>';
   } else {
-    jrnlEl.innerHTML = `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead><tbody>`
+    jrnlEl.innerHTML = (from ? `<div class="muted" style="font-size:12px;margin-bottom:8px">${plPeriodLabel}</div>` : '')
+      + `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead><tbody>`
       + entries.map(e => { const man = e.source_table === 'manual'; return `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.account_code)} <span class="muted">${escapeHtml(e.account_name || '')}</span></td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(e.amount) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(e.amount) : ''}</td><td class="row-actions">${man ? `<button data-je="${escapeHtml(e.txn_id)}" class="danger" title="Delete this manual entry">×</button>` : ''}</td></tr>`; }).join('')
       + `</tbody></table>`;
     jrnlEl.querySelectorAll('button[data-je]').forEach(b => b.addEventListener('click', async (ev) => {

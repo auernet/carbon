@@ -3010,15 +3010,19 @@ app.get('/api/ledger', (req, res) => {
 });
 app.get('/api/ledger/trial-balance', (req, res) => {
   const eid = Number(req.query.entity_id) || null;
+  const to  = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || '') ? req.query.to : null; // cumulative as-of this date
+  const cond = [], p = {};
+  if (eid) { cond.push('le.entity_id=@eid'); p.eid = eid; }
+  if (to)  { cond.push('le.event_date <= @to'); p.to = to; }
   const rows = db.prepare(`
     SELECT le.account_code, coa.name AS account_name, coa.category,
            ROUND(SUM(CASE WHEN le.direction='debit'  THEN le.amount_base ELSE 0 END), 2) AS debit,
            ROUND(SUM(CASE WHEN le.direction='credit' THEN le.amount_base ELSE 0 END), 2) AS credit
       FROM ledger_entries le
       LEFT JOIN chart_of_accounts coa ON coa.code=le.account_code AND coa.entity_id=le.entity_id
-      ${eid ? 'WHERE le.entity_id=@eid' : ''}
+      ${cond.length ? 'WHERE ' + cond.join(' AND ') : ''}
      GROUP BY le.entity_id, le.account_code ORDER BY le.account_code
-  `).all(eid ? { eid } : {});
+  `).all(p);
   const totalDebit = round2(rows.reduce((s, r) => s + r.debit, 0));
   const totalCredit = round2(rows.reduce((s, r) => s + r.credit, 0));
   res.json({ rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 });

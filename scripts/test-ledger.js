@@ -218,6 +218,16 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (dd(ag1.ar.buckets.current - ag2.ar.buckets.current) !== 567) die(`aging: paying did not clear current bucket (delta ${dd(ag1.ar.buckets.current - ag2.ar.buckets.current)})`);
   ok('aging: a fully-paid invoice drops out of receivables');
 
+  // 21) Trial balance is cumulative as-of a date (the 2020 sale from check 16 isolates it)
+  const tbAll = await api('GET', '/api/ledger/trial-balance?entity_id=1');
+  const tb2020 = await api('GET', '/api/ledger/trial-balance?entity_id=1&to=2020-12-31');
+  const tb2019 = await api('GET', '/api/ledger/trial-balance?entity_id=1&to=2019-12-31');
+  if (!tb2020.balanced || !tb2019.balanced) die('as-of trial balance not balanced');
+  if (dd(tb2019.totalDebit) !== 0) die(`trial balance as-of 2019 should be empty, got ${tb2019.totalDebit}`);
+  if (dd(tb2020.totalDebit) !== 100) die(`trial balance as-of 2020 debit ${tb2020.totalDebit} != 100`);
+  if (tbAll.totalDebit <= tb2020.totalDebit) die('all-time trial balance should exceed the 2020 as-of total');
+  ok('trial balance is cumulative as-of a date (2019 empty, 2020 = 100, all-time larger)');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);
