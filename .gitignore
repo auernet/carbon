@@ -4,3 +4,6 @@ data/
 *.db-wal
 *.db-shm
 .DS_Store
+
+# /preview throwaway sandbox routes — keep them out of git so a build/stash never sweeps them mid-session
+src/app/preview-*/
