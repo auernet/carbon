@@ -54,7 +54,7 @@ async function waitForServer() {
   if (await page.$('#app-error-bar')) fail('boot error banner is showing — init() threw');
 
   // --- each core tab must actually show its panel ---
-  for (const t of ['invoices', 'flows', 'banks', 'audit', 'reports', 'contacts']) {
+  for (const t of ['invoices', 'flows', 'banks', 'ledger', 'audit', 'reports', 'contacts']) {
     await page.click(`.tab[data-tab="${t}"]`).catch(() => fail(`tab "${t}" not clickable`));
     await page.waitForFunction(
       (id) => { const p = document.getElementById('tab-' + id); return p && !p.hidden; },
@@ -64,7 +64,7 @@ async function waitForServer() {
   }
 
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
-  console.log('\n✅ SMOKE OK — login + dashboard + 6 core tabs render, no uncaught errors.');
+  console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();
   process.exit(0);
 })().catch(e => fail(e.message));

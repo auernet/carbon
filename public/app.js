@@ -84,6 +84,8 @@ const api = {
   createEntity:  (body) => jsonReq('POST', '/api/entities', body),
   updateJurisdiction: (code, body) => jsonReq('PUT', '/api/jurisdictions/' + code, body),
   reportPL:      () => fetch('/api/reports/pl').then(r => r.json()),
+  ledgerTrialBalance: (eid) => fetch('/api/ledger/trial-balance?entity_id=' + eid).then(r => r.json()),
+  ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
   flows:         () => fetch('/api/flows').then(r => r.json()),
   flowSummary:   () => fetch('/api/flows/summary').then(r => r.json()),
@@ -303,6 +305,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (target === 'dashboard') loadDashboard();
     if (target === 'settings') loadSettings();
     if (target === 'reports') loadReports();
+    if (target === 'ledger') loadLedger();
   });
 });
 
@@ -3589,6 +3592,43 @@ async function saveBankTx() {
   catch (e) { toast('Save failed: ' + e.message, 'error'); return; }
   btxDlg.close();
   await loadBankTransactions(state.bankCurrentAccountId);
+}
+
+// ---------- ledger tab ----------
+async function loadLedger() {
+  const sel = document.getElementById('ledger-entity');
+  if (sel && !sel.options.length) {
+    sel.innerHTML = (state.entities || []).map(e => `<option value="${e.id}">${escapeHtml(e.code)} — ${escapeHtml(e.legal_name)}</option>`).join('');
+    sel.addEventListener('change', loadLedger);
+  }
+  const eid = sel && sel.value ? sel.value : ((state.entities || [])[0] || {}).id;
+  const trialEl = document.getElementById('ledger-trial');
+  const jrnlEl = document.getElementById('ledger-journal');
+  const badge = document.getElementById('ledger-balance-badge');
+  if (!eid) { if (trialEl) trialEl.innerHTML = '<div class="muted dash-empty">No entities yet.</div>'; return; }
+  const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const CAT = { A: 'Assets', L: 'Liabilities', Eq: 'Equity', I: 'Income', E: 'Expenses' };
+  const [tb, entries] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid)]);
+
+  if (badge) badge.innerHTML = tb.balanced
+    ? '<span style="color:var(--accent-2);font-weight:600">✓ balanced</span>'
+    : '<span style="color:var(--danger);font-weight:600">✗ out of balance</span>';
+
+  if (!tb.rows.length) {
+    trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
+  } else {
+    trialEl.innerHTML = `<table><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
+      + tb.rows.map(r => `<tr><td>${escapeHtml(r.account_code)}</td><td>${escapeHtml(r.account_name || '')}</td><td class="muted">${escapeHtml(CAT[r.category] || '')}</td><td class="num">${r.debit ? fmt(r.debit) : ''}</td><td class="num">${r.credit ? fmt(r.credit) : ''}</td></tr>`).join('')
+      + `<tr style="border-top:2px solid var(--border)"><td colspan="3"><strong>Totals</strong></td><td class="num"><strong>${fmt(tb.totalDebit)}</strong></td><td class="num"><strong>${fmt(tb.totalCredit)}</strong></td></tr></tbody></table>`;
+  }
+
+  if (!entries.length) {
+    jrnlEl.innerHTML = '<div class="muted dash-empty">No journal entries.</div>';
+  } else {
+    jrnlEl.innerHTML = `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
+      + entries.map(e => `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.account_code)} <span class="muted">${escapeHtml(e.account_name || '')}</span></td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(e.amount) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(e.amount) : ''}</td></tr>`).join('')
+      + `</tbody></table>`;
+  }
 }
 
 // ---------- audit tab ----------

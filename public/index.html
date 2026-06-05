@@ -102,6 +102,10 @@
             </svg>
             <span>Reports</span>
           </button>
+          <button class="tab" data-tab="ledger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <span>Ledger</span>
+          </button>
           <button class="tab" data-tab="audit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>
@@ -773,6 +777,27 @@
       <div class="audit-split">
         <div id="audit-list" class="audit-list"></div>
         <div id="audit-detail-pane" class="audit-detail-pane"><div class="dp-placeholder muted">Select an event to see its details.</div></div>
+      </div>
+    </section>
+
+    <!-- LEDGER -->
+    <section id="tab-ledger" class="panel" hidden>
+      <header class="page-head">
+        <h1>Ledger</h1>
+        <p class="muted">Double-entry books — auto-posted from invoices &amp; payments. <span id="ledger-balance-badge"></span></p>
+      </header>
+      <div class="toolbar">
+        <label>Entity <select id="ledger-entity"></select></label>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-card dash-card-wide">
+          <h3>Trial balance</h3>
+          <div id="ledger-trial"></div>
+        </div>
+        <div class="dash-card dash-card-wide">
+          <h3>Journal — recent entries</h3>
+          <div id="ledger-journal"></div>
+        </div>
       </div>
     </section>
     </main>
