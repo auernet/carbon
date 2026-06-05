@@ -2807,10 +2807,11 @@ app.get('/api/reports/aging', (req, res) => {
              WHEN julianday(?) - julianday(i.due_date) <= 90  THEN 'd90'
              ELSE 'd90p'
            END AS bucket,
-           SUM(i.total) AS amount
+           SUM(i.total - IFNULL(i.amount_paid, 0)) AS amount
       FROM invoices i
       JOIN entities e ON e.id = i.entity_id
-     WHERE i.direction = ? AND i.status IN ('draft','sent')
+     WHERE i.direction = ? AND i.status NOT IN ('draft','void')
+       AND (i.total - IFNULL(i.amount_paid, 0)) > 0.005
      GROUP BY e.code, i.currency, bucket
   `).all(today, today, today, today, direction);
 

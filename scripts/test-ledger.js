@@ -228,6 +228,14 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (tbAll.totalDebit <= tb2020.totalDebit) die('all-time trial balance should exceed the 2020 as-of total');
   ok('trial balance is cumulative as-of a date (2019 empty, 2020 = 100, all-time larger)');
 
+  // 22) Reports-tab aging nets payments (previously summed gross invoice totals)
+  const ra0 = (await api('GET', '/api/reports/aging?direction=sales')).reduce((s, r) => s + r.total, 0);
+  const ri = await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'sales', issue_date: TODAY, due_date: TODAY, lines: [{ description: 'partial pay', quantity: 1, unit_price: 1000, tax_rate: 0 }] });
+  await api('POST', `/api/invoices/${ri.id}/payments`, { amount: 400, paid_on: TODAY });
+  const ra1 = (await api('GET', '/api/reports/aging?direction=sales')).reduce((s, r) => s + r.total, 0);
+  if (dd(ra1 - ra0) !== 600) die(`reports aging should net payments: delta ${dd(ra1 - ra0)} != 600 outstanding (gross would be 1000)`);
+  ok('reports aging nets payments (outstanding 600, not gross 1000)');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);
