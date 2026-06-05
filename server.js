@@ -2959,6 +2959,46 @@ app.get('/api/ledger/trial-balance', (req, res) => {
   res.json({ rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 });
 });
 
+// Manual journal entries — balanced lines posted by hand (opening balances, adjustments).
+app.post('/api/ledger/journal', (req, res) => {
+  const b = req.body || {};
+  const entityId = Number(b.entity_id);
+  const ent = db.prepare('SELECT base_currency FROM entities WHERE id = ?').get(entityId);
+  if (!ent) return res.status(400).json({ error: 'unknown entity' });
+  const eventDate = b.event_date || new Date().toISOString().slice(0, 10);
+  if (!isValidDate(eventDate)) return res.status(400).json({ error: 'event_date must be YYYY-MM-DD' });
+  const lines = Array.isArray(b.lines) ? b.lines : [];
+  if (lines.length < 2) return res.status(400).json({ error: 'at least two lines required' });
+  let debit = 0, credit = 0; const clean = [];
+  for (const l of lines) {
+    const code = String(l.account_code || '').trim();
+    const dir = l.direction === 'credit' ? 'credit' : 'debit';
+    const amt = round2(Number(l.amount) || 0);
+    if (!code) return res.status(400).json({ error: 'each line needs an account' });
+    if (amt <= 0) return res.status(400).json({ error: 'each line needs a positive amount' });
+    if (!db.prepare('SELECT 1 FROM chart_of_accounts WHERE code = ? AND entity_id = ?').get(code, entityId))
+      return res.status(400).json({ error: `account ${code} not in this entity's chart` });
+    (dir === 'debit' ? (debit += amt) : (credit += amt));
+    clean.push({ code, dir, amt });
+  }
+  if (Math.abs(debit - credit) > 0.01) return res.status(400).json({ error: `not balanced — debits ${round2(debit)} ≠ credits ${round2(credit)}` });
+  const txnId = 'man-' + Date.now();
+  const ins = db.prepare(`INSERT INTO ledger_entries (entity_id, txn_id, event_date, account_code, direction, amount, currency, amount_base, description, source_table, source_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL)`);
+  db.transaction(() => { for (const l of clean) ins.run(entityId, txnId, eventDate, l.code, l.dir, l.amt, ent.base_currency, l.amt, b.description || 'Journal entry'); })();
+  audit('ledger_entries', null, 'journal', null, { entity_id: entityId, txn_id: txnId, lines: clean.length, amount: round2(debit) });
+  res.json({ ok: true, txn_id: txnId });
+});
+app.delete('/api/ledger/journal/:txnId', (req, res) => {
+  const txnId = String(req.params.txnId);
+  if (!txnId.startsWith('man-')) return res.status(400).json({ error: 'only manual journal entries can be deleted here' });
+  const before = db.prepare("SELECT id FROM ledger_entries WHERE txn_id = ? AND source_table='manual'").all(txnId);
+  if (!before.length) return res.status(404).json({ error: 'not found' });
+  db.prepare("DELETE FROM ledger_entries WHERE txn_id = ? AND source_table='manual'").run(txnId);
+  audit('ledger_entries', null, 'journal-delete', { txn_id: txnId, lines: before.length }, null);
+  res.json({ ok: true });
+});
+
 // ==================================================================
 // Aspire adapter (Connect API — Bank Feed)
 // Docs: https://aspireapp.com/hk/api

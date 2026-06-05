@@ -86,6 +86,9 @@ const api = {
   reportPL:      () => fetch('/api/reports/pl').then(r => r.json()),
   ledgerTrialBalance: (eid) => fetch('/api/ledger/trial-balance?entity_id=' + eid).then(r => r.json()),
   ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
+  ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
+  postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
+  deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
   flows:         () => fetch('/api/flows').then(r => r.json()),
   flowSummary:   () => fetch('/api/flows/summary').then(r => r.json()),
@@ -3601,6 +3604,7 @@ async function loadLedger() {
     sel.innerHTML = (state.entities || []).map(e => `<option value="${e.id}">${escapeHtml(e.code)} — ${escapeHtml(e.legal_name)}</option>`).join('');
     sel.addEventListener('change', loadLedger);
   }
+  wireJournalDialog();
   const eid = sel && sel.value ? sel.value : ((state.entities || [])[0] || {}).id;
   const trialEl = document.getElementById('ledger-trial');
   const jrnlEl = document.getElementById('ledger-journal');
@@ -3625,10 +3629,74 @@ async function loadLedger() {
   if (!entries.length) {
     jrnlEl.innerHTML = '<div class="muted dash-empty">No journal entries.</div>';
   } else {
-    jrnlEl.innerHTML = `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>`
-      + entries.map(e => `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.account_code)} <span class="muted">${escapeHtml(e.account_name || '')}</span></td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(e.amount) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(e.amount) : ''}</td></tr>`).join('')
+    jrnlEl.innerHTML = `<table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead><tbody>`
+      + entries.map(e => { const man = e.source_table === 'manual'; return `<tr><td>${escapeHtml(e.event_date || '')}</td><td>${escapeHtml(e.account_code)} <span class="muted">${escapeHtml(e.account_name || '')}</span></td><td>${escapeHtml(e.description || '')}</td><td class="num">${e.direction === 'debit' ? fmt(e.amount) : ''}</td><td class="num">${e.direction === 'credit' ? fmt(e.amount) : ''}</td><td class="row-actions">${man ? `<button data-je="${escapeHtml(e.txn_id)}" class="danger" title="Delete this manual entry">×</button>` : ''}</td></tr>`; }).join('')
       + `</tbody></table>`;
+    jrnlEl.querySelectorAll('button[data-je]').forEach(b => b.addEventListener('click', async () => {
+      if (!await uiConfirm('Delete this manual journal entry?')) return;
+      try { await api.deleteJournal(b.dataset.je); toast('Entry deleted', 'ok'); loadLedger(); } catch (e) { toast(e.message, 'error'); }
+    }));
   }
+}
+
+// ---------- manual journal entry dialog ----------
+let _jeWired = false;
+function jeOptions() { return '<option value="">— account —</option>' + (window._jeAccts || []).map(a => `<option value="${a.code}">${escapeHtml(a.code)} — ${escapeHtml(a.name)}</option>`).join(''); }
+function addJeLine() {
+  const tbody = document.querySelector('#je-lines tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><select class="je-acct">${jeOptions()}</select></td>
+    <td class="num"><input type="number" step="0.01" min="0" class="je-debit" style="width:110px"></td>
+    <td class="num"><input type="number" step="0.01" min="0" class="je-credit" style="width:110px"></td>
+    <td><button type="button" class="je-rm danger">×</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.je-rm').addEventListener('click', () => { tr.remove(); updateJeBalance(); });
+  tr.querySelector('.je-debit').addEventListener('input', (e) => { if (e.target.value) tr.querySelector('.je-credit').value = ''; updateJeBalance(); });
+  tr.querySelector('.je-credit').addEventListener('input', (e) => { if (e.target.value) tr.querySelector('.je-debit').value = ''; updateJeBalance(); });
+}
+function updateJeBalance() {
+  let d = 0, c = 0;
+  document.querySelectorAll('#je-lines tbody tr').forEach(tr => { d += Number(tr.querySelector('.je-debit').value) || 0; c += Number(tr.querySelector('.je-credit').value) || 0; });
+  const diff = Math.round((d - c) * 100) / 100;
+  const el = document.getElementById('je-balance'), save = document.getElementById('je-save');
+  if (diff === 0 && d > 0) { el.innerHTML = `<span style="color:var(--accent-2);font-weight:600">✓ balanced — ${d.toFixed(2)}</span>`; save.disabled = false; }
+  else { el.innerHTML = `<span style="color:var(--danger)">Debits ${d.toFixed(2)} vs credits ${c.toFixed(2)} — off by ${Math.abs(diff).toFixed(2)}</span>`; save.disabled = true; }
+}
+function openJournalDialog() {
+  const sel = document.getElementById('ledger-entity');
+  if (!sel || !sel.value) { toast('Pick an entity first', 'warn'); return; }
+  document.getElementById('je-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('je-desc').value = '';
+  document.querySelector('#je-lines tbody').innerHTML = '';
+  api.ledgerAccounts(sel.value).then(accts => {
+    window._jeAccts = accts;
+    addJeLine(); addJeLine();
+    updateJeBalance();
+    document.getElementById('journal-dialog').showModal();
+  });
+}
+async function saveJournal() {
+  const sel = document.getElementById('ledger-entity');
+  const lines = [];
+  document.querySelectorAll('#je-lines tbody tr').forEach(tr => {
+    const code = tr.querySelector('.je-acct').value;
+    const deb = Number(tr.querySelector('.je-debit').value) || 0;
+    const cr = Number(tr.querySelector('.je-credit').value) || 0;
+    if (code && (deb > 0 || cr > 0)) lines.push({ account_code: code, direction: deb > 0 ? 'debit' : 'credit', amount: deb > 0 ? deb : cr });
+  });
+  try {
+    await api.postJournal({ entity_id: Number(sel.value), event_date: document.getElementById('je-date').value, description: document.getElementById('je-desc').value, lines });
+    document.getElementById('journal-dialog').close();
+    toast('Journal entry posted', 'ok');
+    loadLedger();
+  } catch (e) { toast(e.message, 'error'); }
+}
+function wireJournalDialog() {
+  if (_jeWired) return; _jeWired = true;
+  document.getElementById('btn-new-journal')?.addEventListener('click', openJournalDialog);
+  document.getElementById('je-add-line')?.addEventListener('click', addJeLine);
+  document.getElementById('je-cancel')?.addEventListener('click', () => document.getElementById('journal-dialog').close());
+  document.getElementById('je-save')?.addEventListener('click', saveJournal);
 }
 
 // ---------- audit tab ----------

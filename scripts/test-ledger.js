@@ -136,6 +136,29 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (dd(d0 - t.totalDebit) !== 300) die(`flow delete: debit drop ${dd(d0 - t.totalDebit)} != 300`);
   ok('delete money flow clears its footprint, balanced');
 
+  // 12) Manual journal — balanced (opening balance)
+  d0 = t.totalDebit;
+  const j = await api('POST', '/api/ledger/journal', { entity_id: 1, event_date: TODAY, description: 'Opening balance', lines: [{ account_code: '1000', direction: 'debit', amount: 5000 }, { account_code: '3000', direction: 'credit', amount: 5000 }] });
+  t = await tb();
+  if (!t.balanced) die('manual journal not balanced');
+  if (dd(t.totalDebit - d0) !== 5000) die(`manual journal: debit delta ${dd(t.totalDebit - d0)} != 5000`);
+  ok('manual journal (DR Cash 5000 / CR Equity 5000) posts, balanced');
+
+  // 13) Manual journal — unbalanced is rejected
+  let rejected = false;
+  try { await api('POST', '/api/ledger/journal', { entity_id: 1, event_date: TODAY, lines: [{ account_code: '1000', direction: 'debit', amount: 100 }, { account_code: '3000', direction: 'credit', amount: 50 }] }); }
+  catch (e) { rejected = /balanced|≠/.test(e.message); }
+  if (!rejected) die('unbalanced manual journal was NOT rejected');
+  ok('unbalanced manual journal is rejected');
+
+  // 14) Delete the manual journal clears its footprint
+  d0 = t.totalDebit;
+  await api('DELETE', `/api/ledger/journal/${j.txn_id}`);
+  t = await tb();
+  if (!t.balanced) die('after journal delete not balanced');
+  if (dd(d0 - t.totalDebit) !== 5000) die(`journal delete: debit drop ${dd(d0 - t.totalDebit)} != 5000`);
+  ok('delete manual journal clears its footprint, balanced');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

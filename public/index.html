@@ -788,6 +788,7 @@
       </header>
       <div class="toolbar">
         <label>Entity <select id="ledger-entity"></select></label>
+        <button id="btn-new-journal" class="primary" style="margin-left:auto">+ Journal entry</button>
       </div>
       <div class="dash-grid">
         <div class="dash-card dash-card-wide">
@@ -1271,6 +1272,27 @@
       <div class="actions">
         <button type="button" id="juris-cancel">Cancel</button>
         <button type="button" id="juris-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Journal entry dialog -->
+  <dialog id="journal-dialog">
+    <form id="journal-form" method="dialog">
+      <h2>New journal entry</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <label>Date <input type="date" id="je-date" required></label>
+        <label style="flex:1;min-width:200px">Description <input type="text" id="je-desc" placeholder="e.g. Opening balance" style="width:100%"></label>
+      </div>
+      <table id="je-lines" class="line-table">
+        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button type="button" id="je-add-line" style="margin-top:8px">+ Add line</button>
+      <div id="je-balance" style="margin-top:10px;font-size:13px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button type="button" id="je-cancel">Cancel</button>
+        <button type="button" id="je-save" class="primary">Post entry</button>
       </div>
     </form>
   </dialog>

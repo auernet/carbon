@@ -63,6 +63,13 @@ async function waitForServer() {
     if (await page.$('#app-error-bar')) fail(`boot error banner appeared after opening "${t}"`);
   }
 
+  // Ledger journal dialog must actually open (catches missing wiring / api methods)
+  await page.click('.tab[data-tab="ledger"]');
+  await page.waitForFunction(() => { const p = document.getElementById('tab-ledger'); return p && !p.hidden; }, { timeout: 6000 }).catch(() => fail('ledger tab did not show'));
+  await page.click('#btn-new-journal');
+  await page.waitForFunction(() => { const d = document.getElementById('journal-dialog'); return d && d.open && d.querySelector('.je-acct'); }, { timeout: 6000 }).catch(() => fail('journal entry dialog did not open'));
+  if (await page.$('#app-error-bar')) fail('error banner appeared opening the journal dialog');
+
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');
   cleanup();
