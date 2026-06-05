@@ -87,7 +87,7 @@ const api = {
   ledgerTrialBalance: (eid) => fetch('/api/ledger/trial-balance?entity_id=' + eid).then(r => r.json()),
   ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
   ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
-  ledgerStatements:   (eid) => fetch('/api/ledger/statements?entity_id=' + eid).then(r => r.json()),
+  ledgerStatements:   (eid, from, to) => fetch('/api/ledger/statements?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3613,7 +3613,22 @@ async function loadLedger() {
   if (!eid) { if (trialEl) trialEl.innerHTML = '<div class="muted dash-empty">No entities yet.</div>'; return; }
   const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const CAT = { A: 'Assets', L: 'Liabilities', Eq: 'Equity', I: 'Income', E: 'Expenses' };
-  const [tb, entries, st] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid)]);
+
+  // period selector → from/to date window (balance sheet is "as of" the `to` date)
+  const per = document.getElementById('ledger-period');
+  if (per && !per._wired) { per._wired = true; per.addEventListener('change', loadLedger); }
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date(); let from = null, to = null;
+  switch (per && per.value) {
+    case 'month':    from = iso(new Date(now.getFullYear(), now.getMonth(), 1)); to = iso(now); break;
+    case 'quarter':  from = iso(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)); to = iso(now); break;
+    case 'ytd':      from = iso(new Date(now.getFullYear(), 0, 1)); to = iso(now); break;
+    case 'lastyear': from = iso(new Date(now.getFullYear() - 1, 0, 1)); to = iso(new Date(now.getFullYear() - 1, 11, 31)); break;
+  }
+  const plPeriodLabel = from ? `${from} → ${to}` : 'All time';
+  const bsAsOfLabel = to || 'today';
+
+  const [tb, entries, st] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid, from, to)]);
 
   if (badge) badge.innerHTML = tb.balanced
     ? '<span style="color:var(--accent-2);font-weight:600">✓ balanced</span>'
@@ -3621,7 +3636,7 @@ async function loadLedger() {
 
   // P&L (income statement)
   const plEl = document.getElementById('ledger-pl');
-  if (plEl) plEl.innerHTML = `<table><tbody>`
+  if (plEl) plEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">${plPeriodLabel}</div><table><tbody>`
     + (st.pl.rows.length ? st.pl.rows.map(r => `<tr><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
     + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
     + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
@@ -3631,7 +3646,7 @@ async function loadLedger() {
   const bsEl = document.getElementById('ledger-bs');
   const section = (label, cat, total) => `<tr><td><strong>${label}</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr>`
     + st.bs.rows.filter(r => r.category === cat).map(r => `<tr><td class="muted">${escapeHtml(r.name)}</td><td class="num">${fmt(r.amount)}</td></tr>`).join('');
-  if (bsEl) bsEl.innerHTML = `<table><tbody>`
+  if (bsEl) bsEl.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">As of ${bsAsOfLabel}</div><table><tbody>`
     + section('Assets', 'A', st.bs.assets)
     + section('Liabilities', 'L', st.bs.liabilities)
     + section('Equity', 'Eq', st.bs.equity)

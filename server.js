@@ -3002,29 +3002,53 @@ app.delete('/api/ledger/journal/:txnId', (req, res) => {
 // Financial statements derived from the ledger: P&L (income statement) + balance sheet.
 app.get('/api/ledger/statements', (req, res) => {
   const eid = Number(req.query.entity_id) || null;
-  const rows = db.prepare(`
-    SELECT coa.category, le.account_code, coa.name AS account_name,
-           ROUND(SUM(CASE WHEN le.direction='debit' THEN le.amount_base ELSE -le.amount_base END), 2) AS net_debit
-      FROM ledger_entries le
-      LEFT JOIN chart_of_accounts coa ON coa.code = le.account_code AND coa.entity_id = le.entity_id
-      ${eid ? 'WHERE le.entity_id=@eid' : ''}
-     GROUP BY le.entity_id, le.account_code HAVING ABS(net_debit) > 0.005 ORDER BY le.account_code
-  `).all(eid ? { eid } : {});
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '') ? req.query.from : null;
+  const to   = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to   || '') ? req.query.to   : null;
+
+  // Net debit per account over an optional date window. Filtering by event_date
+  // keeps whole transactions together (every leg of a posting shares one date),
+  // so the books stay balanced for any window.
+  const sums = (lo, hi) => {
+    const cond = [], p = {};
+    if (eid) { cond.push('le.entity_id=@eid'); p.eid = eid; }
+    if (lo)  { cond.push('le.event_date >= @lo'); p.lo = lo; }
+    if (hi)  { cond.push('le.event_date <= @hi'); p.hi = hi; }
+    return db.prepare(`
+      SELECT coa.category, le.account_code, coa.name AS account_name,
+             ROUND(SUM(CASE WHEN le.direction='debit' THEN le.amount_base ELSE -le.amount_base END), 2) AS net_debit
+        FROM ledger_entries le
+        LEFT JOIN chart_of_accounts coa ON coa.code = le.account_code AND coa.entity_id = le.entity_id
+        ${cond.length ? 'WHERE ' + cond.join(' AND ') : ''}
+       GROUP BY le.entity_id, le.account_code HAVING ABS(net_debit) > 0.005 ORDER BY le.account_code
+    `).all(p);
+  };
+
+  // P&L: income/expense flows WITHIN [from, to]
+  const plRows = sums(from, to).filter(r => r.category === 'I' || r.category === 'E');
+  let I = 0, E = 0;
+  for (const r of plRows) { if (r.category === 'I') I += -r.net_debit; else E += r.net_debit; }
+  const net = round2(I - E);
+  const plPresent = plRows.map(r => ({ code: r.account_code, name: r.account_name, category: r.category, amount: round2(r.category === 'E' ? r.net_debit : -r.net_debit) }));
+
+  // Balance sheet: cumulative position AS OF `to` (everything up to and including it)
+  const bsAll = sums(null, to);
   const bal = { A: 0, L: 0, Eq: 0, I: 0, E: 0 };
-  for (const r of rows) {
+  for (const r of bsAll) {
     if (r.category === 'A') bal.A += r.net_debit;          // assets: debit-normal
     else if (r.category === 'L') bal.L += -r.net_debit;    // liabilities: credit-normal
     else if (r.category === 'Eq') bal.Eq += -r.net_debit;  // equity: credit-normal
     else if (r.category === 'I') bal.I += -r.net_debit;    // income: credit-normal
     else if (r.category === 'E') bal.E += r.net_debit;     // expenses: debit-normal
   }
-  // present each account in its natural sign
-  const present = rows.map(r => ({ code: r.account_code, name: r.account_name, category: r.category, amount: round2(['A', 'E'].includes(r.category) ? r.net_debit : -r.net_debit) }));
-  const net = round2(bal.I - bal.E);
+  const retained = round2(bal.I - bal.E);   // accumulated net income as of `to`
   const assets = round2(bal.A), liabilities = round2(bal.L), equity = round2(bal.Eq);
+  const bsPresent = bsAll.filter(r => ['A', 'L', 'Eq'].includes(r.category))
+    .map(r => ({ code: r.account_code, name: r.account_name, category: r.category, amount: round2(r.category === 'A' ? r.net_debit : -r.net_debit) }));
+
   res.json({
-    pl: { income: round2(bal.I), expenses: round2(bal.E), net, rows: present.filter(r => r.category === 'I' || r.category === 'E') },
-    bs: { assets, liabilities, equity, netIncome: net, balanced: Math.abs(assets - (liabilities + equity + net)) < 0.01, rows: present.filter(r => r.category === 'A' || r.category === 'L' || r.category === 'Eq') },
+    period: { from, to },
+    pl: { income: round2(I), expenses: round2(E), net, rows: plPresent },
+    bs: { assets, liabilities, equity, netIncome: retained, balanced: Math.abs(assets - (liabilities + equity + retained)) < 0.01, rows: bsPresent },
   });
 });
 

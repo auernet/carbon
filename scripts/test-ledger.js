@@ -165,6 +165,17 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (!st.bs.balanced) die(`balance sheet does not balance (A=${st.bs.assets}, L+Eq+NI=${st.bs.liabilities + st.bs.equity + st.bs.netIncome})`);
   ok(`statements: P&L net ${st.pl.net}; balance sheet balances (A ${st.bs.assets} = L+Eq+NetIncome)`);
 
+  // 16) Period filtering — P&L is a flow over [from,to]; balance sheet is cumulative "as of" to
+  await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'sales', issue_date: '2020-06-15', lines: [{ description: '2020 sale', quantity: 1, unit_price: 100, tax_rate: 0 }] });
+  const st19 = await api('GET', '/api/ledger/statements?entity_id=1&from=2019-01-01&to=2019-12-31');
+  const st20 = await api('GET', '/api/ledger/statements?entity_id=1&from=2020-01-01&to=2020-12-31');
+  if (dd(st19.pl.net) !== 0)    die(`2019 window should be empty, got P&L net ${st19.pl.net}`);
+  if (dd(st20.pl.net) !== 100)  die(`2020 window P&L net ${st20.pl.net} != 100 (should isolate the 2020 sale)`);
+  if (dd(st19.bs.assets) !== 0)   die(`balance sheet as-of 2019 assets ${st19.bs.assets} != 0`);
+  if (dd(st20.bs.assets) !== 100) die(`balance sheet as-of 2020 assets ${st20.bs.assets} != 100`);
+  if (!st19.bs.balanced || !st20.bs.balanced) die('period balance sheet does not balance');
+  ok('period filtering: empty 2019 window, isolated 2020 P&L, cumulative as-of balance sheet, balanced');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);
