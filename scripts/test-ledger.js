@@ -103,6 +103,39 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (t.totalDebit >= d0) die('delete: footprint not removed');
   ok('hard delete invoice clears its footprint, still balanced');
 
+  // 8) Income money flow (non-invoice) → DR Bank / CR Revenue
+  d0 = t.totalDebit;
+  const inflow = await api('POST', '/api/flows', { flow_date: TODAY, amount: 300, currency: 'HKD', kind: 'income', to_entity_id: 1, from_contact_id: 2 });
+  t = await tb();
+  if (!t.balanced) die('income flow not balanced');
+  if (dd(t.totalDebit - d0) !== 300) die(`income flow: debit delta ${dd(t.totalDebit - d0)} != 300`);
+  if (acct(t, '1010').debit < 300) die('income flow: Bank not debited');
+  ok('income money flow → DR Bank 300 / CR Revenue 300, balanced');
+
+  // 9) Expense money flow → DR Expense / CR Bank
+  d0 = t.totalDebit;
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 200, currency: 'HKD', kind: 'expense', from_entity_id: 1, to_contact_id: 2 });
+  t = await tb();
+  if (!t.balanced) die('expense flow not balanced');
+  if (dd(t.totalDebit - d0) !== 200) die(`expense flow: debit delta ${dd(t.totalDebit - d0)} != 200`);
+  ok('expense money flow → DR Expense 200 / CR Bank 200, balanced');
+
+  // 10) Invoice-linked flow is NOT posted (avoids double-count)
+  d0 = t.totalDebit;
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 999, currency: 'USD', kind: 'income', to_entity_id: 1, from_contact_id: 2, invoice_id: fxInv.id });
+  t = await tb();
+  if (!t.balanced) die('invoice-linked flow not balanced');
+  if (dd(t.totalDebit - d0) !== 0) die(`invoice-linked flow wrongly posted (delta ${dd(t.totalDebit - d0)})`);
+  ok('invoice-linked flow is skipped (no double-count), balanced');
+
+  // 11) Delete a flow clears its footprint
+  d0 = t.totalDebit;
+  await api('DELETE', `/api/flows/${inflow.id}`);
+  t = await tb();
+  if (!t.balanced) die('flow delete not balanced');
+  if (dd(d0 - t.totalDebit) !== 300) die(`flow delete: debit drop ${dd(d0 - t.totalDebit)} != 300`);
+  ok('delete money flow clears its footprint, balanced');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

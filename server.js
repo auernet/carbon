@@ -476,6 +476,41 @@ for (const r of db.prepare(`SELECT i.id FROM invoices i WHERE NOT EXISTS (SELECT
   postInvoiceFull(r.id);
 }
 
+// Convert an amount to an entity's base currency via fx_rates (rate_to_usd cross-rate).
+// Both legs of a flow use the same base value, so a missing rate never imbalances a txn.
+function baseConvert(amount, fromCcy, baseCcy) {
+  if (!fromCcy || !baseCcy || fromCcy === baseCcy) return round2(amount);
+  const rf = getRateToUSD(fromCcy), rb = getRateToUSD(baseCcy);
+  return (rf && rb) ? round2(amount * rf / rb) : round2(amount);
+}
+// Money flows → ledger. Non-invoice cash events only (invoice-linked flows are
+// already captured by the invoice/payment posting). Inflow = income, outflow =
+// expense; an entity↔entity flow posts both sides. Idempotent per flow.
+function postMoneyFlow(flowId) {
+  const f = db.prepare('SELECT * FROM money_flows WHERE id = ?').get(flowId);
+  const clear = db.prepare("DELETE FROM ledger_entries WHERE source_table='money_flows' AND source_id = ?");
+  const ins = db.prepare(`INSERT INTO ledger_entries (entity_id, txn_id, event_date, account_code, direction, amount, currency, amount_base, description, source_table, source_id)
+     VALUES (@entity_id, @txn_id, @event_date, @account_code, @direction, @amount, @currency, @amount_base, @description, 'money_flows', @source_id)`);
+  const run = db.transaction(() => {
+    clear.run(flowId);
+    if (!f || f.invoice_id) return;
+    const desc = (f.category ? f.category + ' — ' : '') + (f.kind || 'flow') + (f.reference ? ' (' + f.reference + ')' : '');
+    const post = (entityId, dir) => {
+      const e = db.prepare('SELECT base_currency FROM entities WHERE id = ?').get(entityId);
+      if (!e) return;
+      const base = baseConvert(f.amount, f.currency, e.base_currency);
+      const legs = dir === 'in' ? [['1010', 'debit'], ['4000', 'credit']] : [['5000', 'debit'], ['1010', 'credit']];
+      for (const [code, d] of legs) ins.run({ entity_id: entityId, txn_id: 'flow-' + flowId + '-' + dir, event_date: f.flow_date, account_code: code, direction: d, amount: round2(f.amount), currency: f.currency, amount_base: base, description: desc, source_id: flowId });
+    };
+    if (f.to_entity_id) post(f.to_entity_id, 'in');
+    if (f.from_entity_id) post(f.from_entity_id, 'out');
+  });
+  try { run(); } catch (e) { console.error('postMoneyFlow failed', flowId, e.message); }
+}
+for (const r of db.prepare(`SELECT id FROM money_flows WHERE invoice_id IS NULL AND id NOT IN (SELECT DISTINCT source_id FROM ledger_entries WHERE source_table='money_flows' AND source_id IS NOT NULL)`).all()) {
+  postMoneyFlow(r.id);
+}
+
 // Self-heal: purge orphan rows that may have leaked in through manual CLI edits
 // (FK cascade only fires when foreign_keys=ON, which the sqlite3 shell doesn't set by default).
 db.exec(`
@@ -2389,6 +2424,7 @@ app.post('/api/flows', (req, res) => {
   const id = result.lastInsertRowid;
   const after = loadFlow(id);
   audit('money_flows', id, 'insert', null, after);
+  postMoneyFlow(id);
   res.json(after);
 });
 
@@ -2403,6 +2439,7 @@ app.put('/api/flows/:id', (req, res) => {
   db.prepare(`UPDATE money_flows SET ${setClause} WHERE id = @id`).run({ ...data, id });
   const after = loadFlow(id);
   audit('money_flows', id, 'update', before, after);
+  postMoneyFlow(id);
   res.json(after);
 });
 
@@ -2412,6 +2449,7 @@ app.delete('/api/flows/:id', (req, res) => {
   if (!before) return res.status(404).json({ error: 'not found' });
   db.prepare('DELETE FROM money_flows WHERE id = ?').run(id);
   audit('money_flows', id, 'delete', before, null);
+  postMoneyFlow(id);
   res.json({ ok: true });
 });
 
