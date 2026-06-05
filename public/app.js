@@ -2528,7 +2528,7 @@ document.getElementById('csv-file-input').addEventListener('change', async (e) =
     const txns = parseBankCsv(text);
     if (!txns.length) { toast('No rows parsed from CSV', 'warn'); return; }
     const result = await api.importTransactions(state.bankCurrentAccountId, txns);
-    toast(`Imported ${result.inserted}, skipped ${result.skipped} duplicates.`, 'ok');
+    toast(`Imported ${result.inserted}, skipped ${result.skipped} duplicate(s).`, result.skipped ? 'warn' : 'ok');
     await loadBankTransactions(state.bankCurrentAccountId);
     await loadBanks();   // refresh account counts
   } catch (err) { toast('Import failed: ' + err.message, 'error'); }
