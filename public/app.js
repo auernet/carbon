@@ -87,6 +87,7 @@ const api = {
   ledgerTrialBalance: (eid) => fetch('/api/ledger/trial-balance?entity_id=' + eid).then(r => r.json()),
   ledgerEntries:      (eid) => fetch('/api/ledger?entity_id=' + eid).then(r => r.json()),
   ledgerAccounts:     (eid) => fetch('/api/ledger/accounts?entity_id=' + eid).then(r => r.json()),
+  ledgerStatements:   (eid) => fetch('/api/ledger/statements?entity_id=' + eid).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3612,11 +3613,31 @@ async function loadLedger() {
   if (!eid) { if (trialEl) trialEl.innerHTML = '<div class="muted dash-empty">No entities yet.</div>'; return; }
   const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const CAT = { A: 'Assets', L: 'Liabilities', Eq: 'Equity', I: 'Income', E: 'Expenses' };
-  const [tb, entries] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid)]);
+  const [tb, entries, st] = await Promise.all([api.ledgerTrialBalance(eid), api.ledgerEntries(eid), api.ledgerStatements(eid)]);
 
   if (badge) badge.innerHTML = tb.balanced
     ? '<span style="color:var(--accent-2);font-weight:600">✓ balanced</span>'
     : '<span style="color:var(--danger);font-weight:600">✗ out of balance</span>';
+
+  // P&L (income statement)
+  const plEl = document.getElementById('ledger-pl');
+  if (plEl) plEl.innerHTML = `<table><tbody>`
+    + (st.pl.rows.length ? st.pl.rows.map(r => `<tr><td>${escapeHtml(r.name || r.code)} <span class="muted">${r.category === 'I' ? 'income' : 'expense'}</span></td><td class="num">${fmt(r.amount)}</td></tr>`).join('') : '<tr><td class="muted">No income or expenses yet.</td><td></td></tr>')
+    + `<tr style="border-top:1px solid var(--border)"><td>Income</td><td class="num">${fmt(st.pl.income)}</td></tr>`
+    + `<tr><td>Expenses</td><td class="num">(${fmt(st.pl.expenses)})</td></tr>`
+    + `<tr style="border-top:2px solid var(--border)"><td><strong>Net ${st.pl.net >= 0 ? 'profit' : 'loss'}</strong></td><td class="num"><strong>${fmt(st.pl.net)}</strong></td></tr></tbody></table>`;
+
+  // Balance sheet
+  const bsEl = document.getElementById('ledger-bs');
+  const section = (label, cat, total) => `<tr><td><strong>${label}</strong></td><td class="num"><strong>${fmt(total)}</strong></td></tr>`
+    + st.bs.rows.filter(r => r.category === cat).map(r => `<tr><td class="muted">${escapeHtml(r.name)}</td><td class="num">${fmt(r.amount)}</td></tr>`).join('');
+  if (bsEl) bsEl.innerHTML = `<table><tbody>`
+    + section('Assets', 'A', st.bs.assets)
+    + section('Liabilities', 'L', st.bs.liabilities)
+    + section('Equity', 'Eq', st.bs.equity)
+    + `<tr><td class="muted">Net income (retained)</td><td class="num">${fmt(st.bs.netIncome)}</td></tr>`
+    + `<tr style="border-top:2px solid var(--border)"><td>Liabilities + Equity + Net</td><td class="num">${fmt(st.bs.liabilities + st.bs.equity + st.bs.netIncome)}</td></tr></tbody></table>`
+    + (st.bs.balanced ? '<div style="color:var(--accent-2);font-size:12px;margin-top:6px">✓ Assets = Liabilities + Equity</div>' : '<div style="color:var(--danger);font-size:12px;margin-top:6px">✗ does not balance</div>');
 
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';

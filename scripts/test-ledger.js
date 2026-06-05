@@ -159,6 +159,12 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (dd(d0 - t.totalDebit) !== 5000) die(`journal delete: debit drop ${dd(d0 - t.totalDebit)} != 5000`);
   ok('delete manual journal clears its footprint, balanced');
 
+  // 15) Financial statements derive correctly + balance-sheet identity holds
+  const st = await api('GET', '/api/ledger/statements?entity_id=1');
+  if (dd((st.pl.income - st.pl.expenses) - st.pl.net) !== 0) die(`P&L net mismatch (${st.pl.income} - ${st.pl.expenses} ≠ ${st.pl.net})`);
+  if (!st.bs.balanced) die(`balance sheet does not balance (A=${st.bs.assets}, L+Eq+NI=${st.bs.liabilities + st.bs.equity + st.bs.netIncome})`);
+  ok(`statements: P&L net ${st.pl.net}; balance sheet balances (A ${st.bs.assets} = L+Eq+NetIncome)`);
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);
