@@ -113,6 +113,8 @@ async function waitForServer() {
   if (!aging) fail('AR/AP aging cards did not render');
   const cashflow = await page.evaluate(() => { const el = document.getElementById('ledger-cashflow'); return !!(el && el.textContent.trim()); });
   if (!cashflow) fail('cash flow card did not render');
+  const group = await page.evaluate(() => { const el = document.getElementById('ledger-group'); return !!(el && el.querySelector('table')); });
+  if (!group) fail('group overview card did not render');
 
   if (consoleErrors.length) console.warn('⚠ console errors (non-fatal):', consoleErrors.slice(0, 5));
   console.log('\n✅ SMOKE OK — login + dashboard + 7 core tabs render, no uncaught errors.');

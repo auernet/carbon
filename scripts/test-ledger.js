@@ -284,6 +284,16 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   await api('PUT', '/api/entities/1', { period_lock_through: '' }); // unlock (empty clears it)
   ok('period lock blocks flows + journal entries dated in a closed period (allows later dates)');
 
+  // 28) Group overview: per-entity net/cash converted to USD, group total reconciles
+  const grp = await api('GET', '/api/ledger/group');
+  if (!grp.rows.length) die('group overview returned no entities');
+  const sumNetUsd = grp.rows.reduce((s, r) => s + (r.net_usd || 0), 0);
+  if (dd(sumNetUsd) !== dd(grp.group.net_usd)) die(`group net USD ${grp.group.net_usd} != sum of rows ${dd(sumNetUsd)}`);
+  const stHWG = await api('GET', '/api/ledger/statements?entity_id=1');
+  const eHWG = grp.rows.find(r => r.code === 'HWG');
+  if (eHWG && dd(eHWG.net) !== dd(stHWG.pl.net)) die(`group HWG net ${eHWG.net} != statements net ${stHWG.pl.net}`);
+  ok('group overview: per-entity net/cash in USD, group total reconciles with rows + statements');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

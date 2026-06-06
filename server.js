@@ -3222,6 +3222,41 @@ app.get('/api/ledger/cashflow', (req, res) => {
   });
 });
 
+// Group overview — net profit (period) + cash (as-of `to`) per entity, in each
+// entity's own base currency AND converted to USD, with a USD group total.
+// Cross-entity, so it ignores the entity selector. (Avoids a consolidated balance
+// sheet, which FX translation would knock out of balance.)
+app.get('/api/ledger/group', (req, res) => {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '') ? req.query.from : null;
+  const to   = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to   || '') ? req.query.to   : null;
+  const entities = db.prepare('SELECT id, code, legal_name, base_currency FROM entities ORDER BY code').all();
+  const plStmt = db.prepare(`
+    SELECT coa.category AS cat, ROUND(SUM(CASE WHEN le.direction='debit' THEN le.amount_base ELSE -le.amount_base END), 2) AS net_debit
+      FROM ledger_entries le JOIN chart_of_accounts coa ON coa.code=le.account_code AND coa.entity_id=le.entity_id
+     WHERE le.entity_id=@eid AND coa.category IN ('I','E')
+       ${from ? 'AND le.event_date>=@from' : ''} ${to ? 'AND le.event_date<=@to' : ''}
+     GROUP BY coa.category`);
+  const cashStmt = db.prepare(`
+    SELECT ROUND(SUM(CASE WHEN direction='debit' THEN amount_base ELSE -amount_base END), 2) AS cash
+      FROM ledger_entries WHERE entity_id=@eid AND account_code IN ('1000','1010','1090')
+       ${to ? 'AND event_date<=@to' : ''}`);
+  const rows = []; let gNet = 0, gCash = 0, fxMissing = false;
+  for (const e of entities) {
+    const p = { eid: e.id }; if (from) p.from = from; if (to) p.to = to;
+    let income = 0, expenses = 0;
+    for (const r of plStmt.all(p)) { if (r.cat === 'I') income += -r.net_debit; else expenses += r.net_debit; }
+    const net = round2(income - expenses);
+    const cp = { eid: e.id }; if (to) cp.to = to;
+    const cash = round2((cashStmt.get(cp) || {}).cash || 0);
+    const rate = getRateToUSD(e.base_currency);
+    const net_usd = rate != null ? round2(net * rate) : null;
+    const cash_usd = rate != null ? round2(cash * rate) : null;
+    if (rate == null) fxMissing = true; else { gNet += net_usd; gCash += cash_usd; }
+    rows.push({ code: e.code, name: e.legal_name, base_currency: e.base_currency, net, cash, net_usd, cash_usd });
+  }
+  res.json({ from, to, rows, group: { net_usd: round2(gNet), cash_usd: round2(gCash), fx_missing: fxMissing } });
+});
+
 // ==================================================================
 // Aspire adapter (Connect API — Bank Feed)
 // Docs: https://aspireapp.com/hk/api

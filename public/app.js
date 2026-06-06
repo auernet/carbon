@@ -94,6 +94,7 @@ const api = {
   deleteAccount:      (eid, code) => fetch('/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   ledgerAging:        (eid, asOf) => fetch('/api/ledger/aging?entity_id=' + eid + (asOf ? '&as_of=' + asOf : '')).then(r => r.json()),
   cashflow:           (eid, from, to) => fetch('/api/ledger/cashflow?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
+  ledgerGroup:        (from, to) => fetch('/api/ledger/group?' + (from ? 'from=' + from + '&' : '') + (to ? 'to=' + to : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3642,6 +3643,18 @@ function renderLedgerAging(elId, data, peopleLabel) {
     + (top ? `<div class="muted" style="font-size:11px;margin:10px 0 4px">By ${peopleLabel}</div><table><tbody>${top}</tbody></table>` : '');
 }
 
+function renderGroup(data) {
+  const el = document.getElementById('ledger-group');
+  if (!el) return;
+  if (!data || data.__error) { el.innerHTML = '<div class="muted dash-empty">Couldn\'t load group overview.</div>'; return; }
+  if (!data.rows || !data.rows.length) { el.innerHTML = '<div class="muted dash-empty">No entities.</div>'; return; }
+  const fmt = n => n == null ? '—' : (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  el.innerHTML = `<table><thead><tr><th>Entity</th><th class="num">Net profit</th><th class="num">Cash</th><th class="num">Net (USD)</th><th class="num">Cash (USD)</th></tr></thead><tbody>`
+    + data.rows.map(r => `<tr><td>${escapeHtml(r.code)} <span class="muted">${escapeHtml(r.base_currency || '')}</span></td><td class="num">${fmt(r.net)}</td><td class="num">${fmt(r.cash)}</td><td class="num">${fmt(r.net_usd)}</td><td class="num">${fmt(r.cash_usd)}</td></tr>`).join('')
+    + `<tr style="border-top:2px solid var(--border)"><td><strong>Group (USD)</strong></td><td></td><td></td><td class="num"><strong>${fmt(data.group.net_usd)}</strong></td><td class="num"><strong>${fmt(data.group.cash_usd)}</strong></td></tr></tbody></table>`
+    + (data.group.fx_missing ? '<div class="muted" style="font-size:11px;margin-top:6px">Some currencies have no USD rate — group total excludes them.</div>' : '');
+}
+
 function renderCashflow(elId, data) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -3690,6 +3703,7 @@ async function loadLedger() {
 
   const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => ({ __error: true })); // isolated: aging failure won't blank the statements
   const cashflowP = api.cashflow(eid, from, to).catch(() => ({ __error: true }));
+  const groupP = api.ledgerGroup(from, to).catch(() => ({ __error: true })); // cross-entity, ignores the entity selector
   const fetches = [api.ledgerTrialBalance(eid, to), api.ledgerEntries(eid, from, to), api.ledgerStatements(eid, from, to)];
   if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
   const [tb, entries, st, stPrior] = await Promise.all(fetches);
@@ -3745,6 +3759,7 @@ async function loadLedger() {
     renderLedgerAging('ledger-ap-aging', ag && ag.ap, 'supplier');
   }
   renderCashflow('ledger-cashflow', await cashflowP);
+  renderGroup(await groupP);
 
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
