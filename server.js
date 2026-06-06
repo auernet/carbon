@@ -134,6 +134,13 @@ function runNightlyBackup() {
     const out = path.join(BACKUP_DIR, `carbon-backup-${stamp}.tar.gz`);
     const { execSync } = require('child_process');
     execSync(`tar -czf "${out}" -C "${ROOT}" --exclude='data/backups' --exclude='data/_pending_restore.tar.gz' --exclude='data/_restoring' --exclude='data/_pre-restore-*' data`);
+    // Off-site copy (closes the "all backups on one disk" risk): if CARBON_BACKUP_POSTHOOK is set,
+    // run it with {file} replaced by the archive path, e.g. "rclone copy {file} remote:carbon" or
+    // "aws s3 cp {file} s3://bucket/". Requires the tool to be present in the image.
+    if (process.env.CARBON_BACKUP_POSTHOOK) {
+      try { execSync(process.env.CARBON_BACKUP_POSTHOOK.replaceAll('{file}', out), { stdio: 'ignore' }); console.log('off-site backup hook ran'); }
+      catch (e) { console.error('off-site backup hook failed:', e.message); notify('error', 'Off-site backup hook failed: ' + e.message); }
+    }
     const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('carbon-backup-')).sort();
     const toDelete = files.slice(0, Math.max(0, files.length - BACKUP_RETENTION));
     for (const f of toDelete) fs.unlinkSync(path.join(BACKUP_DIR, f));
