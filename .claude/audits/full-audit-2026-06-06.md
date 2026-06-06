@@ -302,3 +302,35 @@ table carries good CHECK constraints. These are genuinely well done — see "Con
 
 Every fix above is scoped to existing files (`server.js`, `public/*`, `Dockerfile`, schema).
 No restructuring required.
+
+---
+
+## RESOLUTION — 2026-06-06 (same session, 8 commits)
+
+All 16 tracked fixes landed and were tested (`npm run smoke` after every batch; `npm run
+test:ledger` 30/30 after the accounting batch; live-browser check of the password dialog).
+
+- **TIER 0:** C1 done (default-deny gate + escaped statements). C4 done (`/api/backup` +
+  `/api/system/backups` require admin; cookie `SameSite=Strict`). C3 done in code (env
+  `BOOTSTRAP_ADMIN_*` override; committed creds reframed as local-dev-only). C2 capability
+  added (`CARBON_BACKUP_POSTHOOK` off-site copy hook).
+- **TIER 1 accounting:** H1 (balanced FX residual leg + atomic posting, no swallow), H2
+  (payment period-lock), H3 (posting inside the row tx), H4 (reopen paid invoice on payment
+  delete), H5/H6 (missing-rate warn + dashboard `fx_missing`), H7 (flow validation) — all done.
+- **TIER 1 durability:** D1 (atomic on-volume restore), D2 (`synchronous=FULL` + `busy_timeout`),
+  D3 (non-root container via gosu entrypoint), D4 (clear migration failure) — all done.
+- **TIER 2:** frontend trust (jsonReq everywhere, honest toasts, working password dialog,
+  fault-tolerant dashboard/reports, loadTasks stub, double-submit guards) + S2 (upload
+  attachment/allowlist/size cap), S3 (setup stays closed), S4 (generic 5xx, healthz trimmed) — done.
+- **TIER 3:** P1 (tokens in base `:root`), P2 (`:focus-visible`), P4 (expense-delta color) done.
+  P3 (card border unification + carding Reports/Settings tables) deferred to a `/preview` pass
+  (visual judgement). P5 dead-CSS claim was a FALSE POSITIVE — `.counter` is live; not removed.
+
+### Still needs Ben (manual — can't be done from code)
+1. **Rotate the live admin password** and set `BOOTSTRAP_ADMIN_EMAIL` + `BOOTSTRAP_ADMIN_PASSWORD`
+   in Coolify so the live password is not the value in this repo. (Code re-applies env on boot.)
+2. **Rotate the Coolify deploy token** (recoverable from git history) and store it in the keychain.
+3. **Configure off-site backups:** set `CARBON_BACKUP_POSTHOOK` to a copy command and ensure the
+   tool (rclone/aws) is in the image — otherwise backups still live only on the server disk.
+4. **Deploy + verify the container change:** the non-root Dockerfile/entrypoint only takes effect
+   on the next Coolify rebuild; confirm the app boots and `/app/data` is writable after deploy.
