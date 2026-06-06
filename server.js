@@ -887,7 +887,6 @@ app.get('/healthz', (req, res) => {
     status: dbWritable ? 'ok' : 'degraded',
     db_writable: dbWritable,
     uptime_seconds: Math.round(process.uptime()),
-    node_version: process.version,
     timestamp: new Date().toISOString(),
   });
 });
@@ -960,6 +959,11 @@ app.use(express.static(path.join(ROOT, 'public')));
 // --- auth endpoints ---
 app.post('/api/auth/setup', (req, res) => {
   if (usersExist()) return res.status(409).json({ error: 'setup already done' });
+  // Don't reopen setup on a provisioned system whose users table was emptied (failed restore,
+  // manual delete): a configured bootstrap admin means setup stays permanently closed.
+  if (fs.existsSync(BOOTSTRAP_ADMIN_PATH) || (process.env.BOOTSTRAP_ADMIN_EMAIL && process.env.BOOTSTRAP_ADMIN_PASSWORD)) {
+    return res.status(409).json({ error: 'setup is disabled (a bootstrap admin is configured)' });
+  }
   const { email, password, display_name } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
   if (String(password).length < 8) return res.status(400).json({ error: 'password must be 8+ chars' });
@@ -1918,7 +1922,11 @@ function readAttachment(relPath) {
   return fs.readFileSync(full);
 }
 
-const rawBodyMb = express.raw({ type: '*/*', limit: '100mb' });
+const rawBodyMb = express.raw({ type: '*/*', limit: '100mb' });   // restore / decrypt: a full backup tar
+const uploadBodyMb = express.raw({ type: '*/*', limit: '25mb' }); // user file uploads (KYC docs, contract files, logos)
+// Content types safe to render inline; anything else (e.g. an uploaded HTML/SVG) is forced to
+// download so it can't execute script in the app's same origin.
+const SAFE_INLINE_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 // ==================================================================
 // Contracts
@@ -2031,7 +2039,7 @@ app.delete('/api/contracts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/contracts/:id/file', rawBodyMb, (req, res) => {
+app.post('/api/contracts/:id/file', uploadBodyMb, (req, res) => {
   const id = Number(req.params.id);
   const before = loadContract(id);
   if (!before) return res.status(404).json({ error: 'not found' });
@@ -2077,8 +2085,9 @@ app.get('/api/contracts/:id/file', (req, res) => {
   if (!c || !c.file_path) return res.status(404).json({ error: 'no file' });
   const buf = readAttachment(c.file_path);
   if (!buf) return res.status(404).json({ error: 'file missing on disk' });
-  res.set('Content-Type', c.file_mime || 'application/octet-stream');
-  res.set('Content-Disposition', `inline; filename="${c.file_name}"`);
+  const inlineOk = SAFE_INLINE_MIME.has((c.file_mime || '').toLowerCase());
+  res.set('Content-Type', inlineOk ? c.file_mime : 'application/octet-stream');
+  res.set('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${c.file_name}"`);
   res.send(buf);
 });
 
@@ -2185,7 +2194,7 @@ app.delete('/api/kyc/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/kyc/:id/document', rawBodyMb, (req, res) => {
+app.post('/api/kyc/:id/document', uploadBodyMb, (req, res) => {
   const id = Number(req.params.id);
   const before = loadKyc(id);
   if (!before) return res.status(404).json({ error: 'not found' });
@@ -2207,8 +2216,9 @@ app.get('/api/kyc/document/:docId', (req, res) => {
   if (!d) return res.status(404).json({ error: 'not found' });
   const buf = readAttachment(d.file_path);
   if (!buf) return res.status(404).json({ error: 'file missing on disk' });
-  res.set('Content-Type', d.file_mime || 'application/octet-stream');
-  res.set('Content-Disposition', `inline; filename="${d.file_name}"`);
+  const inlineOk = SAFE_INLINE_MIME.has((d.file_mime || '').toLowerCase());
+  res.set('Content-Type', inlineOk ? d.file_mime : 'application/octet-stream');
+  res.set('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${d.file_name}"`);
   res.send(buf);
 });
 
@@ -3588,7 +3598,7 @@ app.put('/api/bank-transactions/:id', (req, res) => {
 // Entity logo upload/retrieve
 // ==================================================================
 
-app.post('/api/entities/:id/logo', rawBodyMb, (req, res) => {
+app.post('/api/entities/:id/logo', uploadBodyMb, (req, res) => {
   const id = Number(req.params.id);
   const e = db.prepare('SELECT * FROM entities WHERE id = ?').get(id);
   if (!e) return res.status(404).json({ error: 'not found' });
@@ -5014,7 +5024,9 @@ app.use((err, req, res, next) => {
   console.error('API error on', req.method, req.path, '—', err.message);
   if (req.path.startsWith('/api/')) {
     const status = err.status || (String(err).includes('UNIQUE') ? 409 : 500);
-    res.status(status).json({ error: err.message || String(err) });
+    // 4xx messages are user-actionable (validation, period lock) and the UI toasts them;
+    // 5xx detail can leak DB internals, so keep it server-side only.
+    res.status(status).json({ error: status >= 500 ? 'Internal error' : (err.message || String(err)) });
   } else {
     res.status(500).type('text/plain').send('Internal error');
   }
