@@ -29,9 +29,12 @@ if (fs.existsSync(_pendingRestorePath)) {
   console.log('Applying pending restore from', _pendingRestorePath);
   const { execSync } = require('child_process');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const stagingDir = path.join(ROOT, '_carbon-restoring');
+  // Stage + rollback copy BOTH live inside the data volume (same device) so the swap is
+  // rename-based (atomic per entry) and the rollback survives a container redeploy.
+  const stagingDir = path.join(DATA_DIR, '_restoring');
+  const safety = path.join(DATA_DIR, `_pre-restore-${stamp}`);
+  const isTempEntry = e => e === '_restoring' || e === '_pending_restore.tar.gz' || e.startsWith('_pre-restore-');
   try {
-    // Extract staged copy outside the mount (tar reads across devices fine).
     fs.rmSync(stagingDir, { recursive: true, force: true });
     fs.mkdirSync(stagingDir, { recursive: true });
     execSync(`tar -xzf "${_pendingRestorePath}" -C "${stagingDir}"`);
@@ -39,14 +42,17 @@ if (fs.existsSync(_pendingRestorePath)) {
     if (!fs.existsSync(path.join(stagedDataDir, 'carbon.db'))) {
       throw new Error('archive missing data/carbon.db');
     }
-    // Safety copy of current data, then replace its contents in place. cpSync
-    // works across devices; emptying + copying avoids renaming the mount point.
-    const safety = path.join(ROOT, `data-pre-restore-${stamp}`);
-    fs.cpSync(DATA_DIR, safety, { recursive: true });
+    // Move current contents aside, then move staged contents in. Renames within one device
+    // are atomic, so an interrupted swap leaves whole old-or-new files — never a truncated
+    // DB — and the originals remain recoverable in `safety`.
+    fs.mkdirSync(safety, { recursive: true });
     for (const entry of fs.readdirSync(DATA_DIR)) {
-      fs.rmSync(path.join(DATA_DIR, entry), { recursive: true, force: true });
+      if (isTempEntry(entry)) continue;
+      fs.renameSync(path.join(DATA_DIR, entry), path.join(safety, entry));
     }
-    fs.cpSync(stagedDataDir, DATA_DIR, { recursive: true });
+    for (const entry of fs.readdirSync(stagedDataDir)) {
+      fs.renameSync(path.join(stagedDataDir, entry), path.join(DATA_DIR, entry));
+    }
     fs.rmSync(stagingDir, { recursive: true, force: true });
     console.log('Restore applied. Previous data saved to', safety);
   } catch (e) {
@@ -61,6 +67,8 @@ if (fs.existsSync(_pendingRestorePath)) {
 const dbExisted = fs.existsSync(DB_PATH);
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = FULL');   // durable across an unclean container restart (WAL + NORMAL can lose the tail)
+db.pragma('busy_timeout = 5000');  // wait instead of throwing SQLITE_BUSY when a write collides with the checkpoint
 db.pragma('foreign_keys = ON');
 
 db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
@@ -125,7 +133,7 @@ function runNightlyBackup() {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const out = path.join(BACKUP_DIR, `carbon-backup-${stamp}.tar.gz`);
     const { execSync } = require('child_process');
-    execSync(`tar -czf "${out}" -C "${ROOT}" --exclude='data/backups' --exclude='data/_pending_restore.tar.gz' --exclude='data/_restoring' data`);
+    execSync(`tar -czf "${out}" -C "${ROOT}" --exclude='data/backups' --exclude='data/_pending_restore.tar.gz' --exclude='data/_restoring' --exclude='data/_pre-restore-*' data`);
     const files = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('carbon-backup-')).sort();
     const toDelete = files.slice(0, Math.max(0, files.length - BACKUP_RETENTION));
     for (const f of toDelete) fs.unlinkSync(path.join(BACKUP_DIR, f));
@@ -248,11 +256,19 @@ setTimeout(pruneAuditLog, 5000);
 setInterval(pruneAuditLog, 24 * 60 * 60 * 1000).unref();
 
 // Lightweight column-level migrations (idempotent).
+// Migrations are idempotent per-statement (PRAGMA-guarded ALTER + CREATE … IF NOT EXISTS),
+// so a crash mid-sequence is resumable on the next boot — no version table needed. The guard
+// here turns a bad future DDL into a clear, actionable fatal instead of a cryptic boot crash.
 function ensureColumn(table, col, ddl) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all();
   if (!cols.find(c => c.name === col)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
-    console.log(`migration: added ${table}.${col}`);
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+      console.log(`migration: added ${table}.${col}`);
+    } catch (e) {
+      console.error(`FATAL migration: could not add ${table}.${col} (${ddl}): ${e.message}`);
+      throw e;
+    }
   }
 }
 ensureColumn('invoices', 'direction',       `TEXT NOT NULL DEFAULT 'sales'`);
@@ -3862,6 +3878,7 @@ app.get('/api/backup', requireAdmin, (req, res) => {
     '--exclude=data/backups',
     '--exclude=data/_pending_restore.tar.gz',
     '--exclude=data/_restoring',
+    '--exclude=data/_pre-restore-*',
     'data',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 

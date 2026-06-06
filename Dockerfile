@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       ca-certificates \
       tar \
+      gosu \
       chromium \
       fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
@@ -19,6 +20,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY . .
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Strip dev tools out of the final image footprint.
 RUN apt-get purge -y build-essential python3 \
@@ -37,4 +39,6 @@ EXPOSE 4040
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:4040/healthz', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
+# Entrypoint fixes data-volume ownership as root, then drops to the unprivileged 'node' user.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
