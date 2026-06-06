@@ -94,7 +94,7 @@ const api = {
   deleteAccount:      (eid, code) => fetch('/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   ledgerAging:        (eid, asOf) => fetch('/api/ledger/aging?entity_id=' + eid + (asOf ? '&as_of=' + asOf : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
-  deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(r => r.json()),
+  deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
   flows:         () => fetch('/api/flows').then(r => r.json()),
   flowSummary:   () => fetch('/api/flows/summary').then(r => r.json()),
@@ -3631,7 +3631,7 @@ if (typeof window !== 'undefined') window.__priorWindow = (mode, isoNow) => prio
 function renderLedgerAging(elId, data, peopleLabel) {
   const el = document.getElementById(elId);
   if (!el) return;
-  if (!data || data.total <= 0) { el.innerHTML = '<div class="muted dash-empty">Nothing outstanding.</div>'; return; }
+  if (!data || !data.buckets || !(data.total > 0)) { el.innerHTML = '<div class="muted dash-empty">Nothing outstanding.</div>'; return; }
   const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const b = data.buckets;
   const buckets = [['Current', 'current'], ['1–30 days', 'd1_30'], ['31–60 days', 'd31_60'], ['61–90 days', 'd61_90'], ['90+ days', 'd90_plus']]
@@ -3673,7 +3673,7 @@ async function loadLedger() {
   const bsAsOfLabel = to || 'today';
   const prior = priorWindow(per && per.value, now); // null for "All time"
 
-  const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => null); // isolated: aging failure won't blank the statements
+  const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => ({ __error: true })); // isolated: aging failure won't blank the statements
   const fetches = [api.ledgerTrialBalance(eid, to), api.ledgerEntries(eid, from, to), api.ledgerStatements(eid, from, to)];
   if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
   const [tb, entries, st, stPrior] = await Promise.all(fetches);
@@ -3720,8 +3720,14 @@ async function loadLedger() {
 
   // AR / AP aging (outstanding invoices as of the period end date)
   const ag = await agingP;
-  renderLedgerAging('ledger-ar-aging', ag && ag.ar, 'customer');
-  renderLedgerAging('ledger-ap-aging', ag && ag.ap, 'supplier');
+  if (ag && ag.__error) {
+    const msg = '<div class="muted dash-empty">Couldn\'t load aging.</div>';
+    const arEl = document.getElementById('ledger-ar-aging'), apEl = document.getElementById('ledger-ap-aging');
+    if (arEl) arEl.innerHTML = msg; if (apEl) apEl.innerHTML = msg;
+  } else {
+    renderLedgerAging('ledger-ar-aging', ag && ag.ar, 'customer');
+    renderLedgerAging('ledger-ap-aging', ag && ag.ap, 'supplier');
+  }
 
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';
@@ -3918,12 +3924,14 @@ async function saveJournal() {
     const cr = Number(tr.querySelector('.je-credit').value) || 0;
     if (code && (deb > 0 || cr > 0)) lines.push({ account_code: code, direction: deb > 0 ? 'debit' : 'credit', amount: deb > 0 ? deb : cr });
   });
+  const saveBtn = document.getElementById('je-save');
+  if (saveBtn) saveBtn.disabled = true; // guard against double-click double-posting
   try {
     await api.postJournal({ entity_id: Number(sel.value), event_date: document.getElementById('je-date').value, description: document.getElementById('je-desc').value, lines });
     document.getElementById('journal-dialog').close();
     toast('Journal entry posted', 'ok');
     loadLedger();
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { toast(e.message, 'error'); if (saveBtn) saveBtn.disabled = false; }
 }
 function wireJournalDialog() {
   if (_jeWired) return; _jeWired = true;
