@@ -6,6 +6,43 @@ Newest on top.
 
 ---
 
+### 2026-06-06 — Ledger build (20 commits) + 3-model ship gate + live deploy
+
+**Friction noted:**
+- **`/ship` is SPRKS-shaped.** It assumes `origin/dev`, `dev.sprks.net`, a ship-permit hook,
+  and `src/docs/briefs/`. Carbon is branch `main`, Coolify, `docs/HANDOFF-*.md`. Had to adapt
+  every step. Same for `/handoff-go` (briefs dir, deploy branch). Consider a Carbon-local
+  `/ship` + `/handoff` that encode Carbon's real paths so future relays don't re-derive them.
+- **Coolify deploy token not in the keychain.** It was redacted from the repo (2026-06-01)
+  with a note to store it in keychain — that never happened. `/api/v1/deploy` 401s with the
+  session cookie. Worked around it by clicking **Redeploy** in the logged-in Coolify UI
+  (Projects → Carbon → app → Redeploy). Reliable, but store the token to skip the browser.
+- **`AGENTS.md` is a SPRKS artifact in this repo.** Codex + Grok both loaded it and BLOCKED on
+  its "integer cents / locale formatter" rules, which don't match Carbon (all `REAL`). Had to
+  triage those as false positives. Either Carbon-ify `AGENTS.md` or delete it.
+
+**Recurring patterns:**
+- **The 3-model gate earned its keep.** Codex (xhigh) + Claude independently caught the same
+  real bug (transfers booked as P&L); Codex+Grok caught the new-entity-no-chart gap. Three
+  real bugs were sitting in code that already passed 24 hermetic checks + smoke. Tests prove
+  the paths you thought of; the gate finds the ones you didn't. Worth running before any ship.
+- **"keep building" ran ~11 times** → 20 commits of ledger, then a clean ship. Each turn:
+  build one phase, test (smoke + hermetic), commit, report, offer ship. The cadence held; the
+  per-phase hermetic test (now 29 checks) is what made rapid iteration safe.
+- **Plain-English cap held under pressure** — Ben asked "sry what?" / "whats budget?" twice
+  when a reply drifted into jargon (commit counts, "consolidation", "gate"). Lesson: even in a
+  deep technical session, status replies must stay in plain words. Recovered both times.
+
+**Suggested workflow tweaks:**
+- Write Carbon-native `/ship` + `/handoff-go` (main branch, Coolify Redeploy via browser,
+  `docs/HANDOFF-*`) so they stop inheriting SPRKS assumptions.
+- Store the Coolify token in the macOS keychain (`coolify-api`/`ben`) and have the deploy path
+  read it; fall back to the UI Redeploy only if absent.
+- Triage Codex/Grok findings against Carbon's ACTUAL conventions, not `AGENTS.md`, until that
+  file is Carbon-ified.
+
+---
+
 ### 2026-05-30 — UI polish + boot-bug fixes + SSOT consolidation
 
 **Friction noted:**

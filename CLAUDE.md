@@ -48,3 +48,6 @@ section headers) — never every label. Token-based; adapts to dark + light auto
 | 2026-05-30 | Prod deploy is manual (push ≠ live); trigger Coolify + verify on prod. |
 | 2026-05-30 | App design language = "Refined" (bordered cards, dividers, accent green on primary labels only). |
 | 2026-05-30 | `app.js` `init()` is boot-critical — an early throw blanks the whole app; wire listeners after their handlers. |
+| 2026-06-06 | Full double-entry ledger shipped live (Ledger tab: statements, cash flow, aging, drill-down, CSV, chart mgmt, period lock, USD group view). |
+| 2026-06-06 | Ledger money stays `REAL` (not cents); `AGENTS.md` cents/formatter rules are SPRKS-derived — verify against Carbon's actual code before applying. |
+| 2026-06-06 | Money flows: only income/expense hit P&L; transfer/capital/dividend/loan post to equity. Group view is a USD summary, not a consolidated balance sheet. |

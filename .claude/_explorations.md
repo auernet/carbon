@@ -4,6 +4,32 @@ Alternatives explored and rejected, with reasoning. Newest on top. NEVER delete 
 
 ---
 
+## 2026-06-06 — Budgets / budget-vs-actual
+
+**The idea:** A budgets subsystem — set a planned number per category, show actual vs plan.
+
+**Why it lost:** Ben declined directly ("don't need this"). For a 3-person team that mostly
+*records* what happened (which the ledger now does), budgets are control machinery they don't
+need yet. Revisit only if Ben asks to start controlling spend against targets.
+
+## 2026-06-06 — Full consolidated balance sheet (group)
+
+**The idea:** A single group balance sheet across all entities, converted to one currency.
+
+**Why it lost:** Entities use different base currencies (HKD, AED). FX translation knocks the
+Assets = Liabilities + Equity identity out of balance — correct accounting needs a
+currency-translation-adjustment (CTA) plug. Too much for the value. Shipped a USD *summary*
+(net profit + cash per entity + group total) instead, which sidesteps the balancing problem.
+
+## 2026-06-06 — Migrate ledger money to integer cents
+
+**The idea:** Store ledger amounts as integer cents (×100), per the `AGENTS.md` money rule
+the ship gate cited.
+
+**Why it lost:** That rule is SPRKS-derived; Carbon's entire codebase uses `REAL` floats.
+Converting only the ledger would make it inconsistent with invoices/flows. See
+locked-decisions 2026-06-06. Would only make sense as an app-wide migration if Ben wants it.
+
 ## 2026-05-30 — Dashboard design: Option B (KPI tiles)
 
 **Context:** `/preview` flow for "make the dashboard nicer"; one of three mocked options.

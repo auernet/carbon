@@ -4,6 +4,46 @@ Durable decisions that apply across sessions. Newest on top. NEVER delete entrie
 
 ---
 
+## 2026-06-06 — Ledger money stays REAL (NOT integer cents)
+
+**Decision:** The ledger persists money as `REAL` + `round2()` + 0.01 balance tolerance,
+consistent with the rest of Carbon (invoices, flows — all REAL).
+
+**Why locked:** The ship gate (Codex + Grok) flagged "store money as integer cents" per
+`AGENTS.md`. That rule is **carried over from SPRKS and does not match Carbon's codebase**.
+Migrating only the ledger to cents would make it inconsistent with every other table. If
+cents is ever wanted, it's an app-wide migration — a separate, deliberate decision. Treat
+`AGENTS.md` conventions as SPRKS-derived; verify against Carbon's actual code before applying.
+
+## 2026-06-06 — Money-flow kind → account mapping
+
+**Decision:** Only `income`/`expense` flows hit the P&L (Revenue 4000 / Expense 5000). All
+other kinds — `transfer` (the default), `capital`, `dividend`, `loan` — post against
+Owner's equity (3000), a balance-sheet movement.
+
+**Why locked:** Original code booked every inflow as Revenue / outflow as Expense, so the
+default `transfer` kind fabricated P&L. Equity is an approximation for transfers (proper
+intercompany accounting is future work) but is strictly correct-er and keeps books balanced.
+
+## 2026-06-06 — Group view is a USD summary, NOT a consolidated balance sheet
+
+**Decision:** The "Group overview (USD)" shows net profit + cash per entity converted to USD
+with a group total. We deliberately do NOT produce a consolidated balance sheet.
+
+**Why locked:** Entities have different base currencies (HWG=HKD, MER=AED). FX translation
+across them breaks the Assets = Liabilities + Equity identity (needs a currency-translation
+adjustment plug). A summary avoids a false "out of balance" without the CTA machinery.
+
+## 2026-06-06 — Period lock enforced on ALL ledger writes
+
+**Decision:** `period_lock_through` is checked on invoices (create/update/void/delete),
+money flows (create/update/delete, both entity sides), and manual journal (create/delete).
+
+**Why locked:** It was previously enforced only on invoice create/update, so flows and
+journals could still post into a "closed" period — a half-working control.
+
+---
+
 ## 2026-05-30 — Single source of truth = ~/Dev/Carbon repo (memory included)
 
 **Decision:** The entire project — code, docs, AND durable memory — lives in `~/Dev/Carbon`. Memory files (`locked-decisions.md`, `_explorations.md`, `workflow-observations.md`) live in the repo's `.claude/` (committed to git), NOT in a home-level `~/.claude/Carbon/` overlay. A root `CLAUDE.md` declares this. Future sessions and handoffs write here only.
