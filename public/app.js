@@ -17,6 +17,19 @@ function showAppError(msg) {
 window.addEventListener('error', (e) => showAppError('Something broke: ' + (e.message || 'script error')));
 window.addEventListener('unhandledrejection', (e) => showAppError('Background error: ' + ((e.reason && e.reason.message) || e.reason || 'unknown')));
 
+// Real implementation is wired inside init() (it closes over the task dialog), so it can't be a
+// top-level function. This stub keeps an early Tasks-tab click from throwing before init wires it.
+let loadTasks = () => {};
+
+// Disable a save button while its async handler runs — prevents duplicate records from a double-click.
+function guardSave(btnId, fn) {
+  return async (...args) => {
+    const b = document.getElementById(btnId);
+    if (b) b.disabled = true;
+    try { await fn(...args); } finally { if (b) b.disabled = false; }
+  };
+}
+
 const api = {
   jurisdictions: () => fetch('/api/jurisdictions').then(r => r.json()),
   createJurisdiction: (body) => fetch('/api/jurisdictions', {
@@ -29,52 +42,40 @@ const api = {
   entities:      () => fetch('/api/entities').then(r => r.json()),
   contacts:      () => fetch('/api/contacts').then(r => r.json()),
   contact:       (id) => fetch('/api/contacts/' + id).then(r => r.json()),
-  createContact: (body) => fetch('/api/contacts', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  updateContact: (id, body) => fetch('/api/contacts/' + id, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  archiveContact: (id) => fetch('/api/contacts/' + id, { method: 'DELETE' }).then(r => r.json()),
+  createContact: (body) => jsonReq('POST', '/api/contacts', body),
+  updateContact: (id, body) => jsonReq('PUT', '/api/contacts/' + id, body),
+  archiveContact: (id) => jsonReq('DELETE', '/api/contacts/' + id),
   audit:         () => fetch('/api/audit').then(r => r.json()),
 
   invoices:      (direction) => fetch('/api/invoices' + (direction ? '?direction=' + direction : '')).then(r => r.json()),
   tasks:         (status) => fetch('/api/tasks' + (status ? '?status=' + status : '')).then(r => r.json()),
   createTask:    (body) => jsonReq('POST', '/api/tasks', body),
   updateTask:    (id, body) => jsonReq('PUT', '/api/tasks/' + id, body),
-  deleteTask:    (id) => fetch('/api/tasks/' + id, { method: 'DELETE' }).then(r => r.json()),
+  deleteTask:    (id) => jsonReq('DELETE', '/api/tasks/' + id),
   invoice:       (id) => fetch('/api/invoices/' + id).then(r => r.json()),
-  createInvoice: (body) => fetch('/api/invoices', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  updateInvoice: (id, body) => fetch('/api/invoices/' + id, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(r => r.json()),
-  voidInvoice:   (id) => fetch('/api/invoices/' + id, { method: 'DELETE' }).then(r => r.json()),
+  createInvoice: (body) => jsonReq('POST', '/api/invoices', body),
+  updateInvoice: (id, body) => jsonReq('PUT', '/api/invoices/' + id, body),
+  voidInvoice:   (id) => jsonReq('DELETE', '/api/invoices/' + id),
 
   contracts:        () => fetch('/api/contracts').then(r => r.json()),
   contract:         (id) => fetch('/api/contracts/' + id).then(r => r.json()),
   createContract:   (body) => jsonReq('POST', '/api/contracts', body),
   updateContract:   (id, body) => jsonReq('PUT', '/api/contracts/' + id, body),
-  archiveContract:  (id) => fetch('/api/contracts/' + id, { method: 'DELETE' }).then(r => r.json()),
+  archiveContract:  (id) => jsonReq('DELETE', '/api/contracts/' + id),
   uploadContractFile: (id, file) => fileReq('/api/contracts/' + id + '/file', file),
 
   kycList:        () => fetch('/api/kyc').then(r => r.json()),
   kyc:            (id) => fetch('/api/kyc/' + id).then(r => r.json()),
   createKyc:      (body) => jsonReq('POST', '/api/kyc', body),
   updateKyc:      (id, body) => jsonReq('PUT', '/api/kyc/' + id, body),
-  deleteKyc:      (id) => fetch('/api/kyc/' + id, { method: 'DELETE' }).then(r => r.json()),
+  deleteKyc:      (id) => jsonReq('DELETE', '/api/kyc/' + id),
   uploadKycDoc:   (id, file, docType) => fileReq('/api/kyc/' + id + '/document', file, { 'X-Doc-Type': docType }),
-  deleteKycDoc:   (docId) => fetch('/api/kyc/document/' + docId, { method: 'DELETE' }).then(r => r.json()),
+  deleteKycDoc:   (docId) => jsonReq('DELETE', '/api/kyc/document/' + docId),
 
   bankAccounts:        () => fetch('/api/bank-accounts').then(r => r.json()),
   createBankAccount:   (body) => jsonReq('POST', '/api/bank-accounts', body),
   updateBankAccount:   (id, body) => jsonReq('PUT', '/api/bank-accounts/' + id, body),
-  archiveBankAccount:  (id) => fetch('/api/bank-accounts/' + id, { method: 'DELETE' }).then(r => r.json()),
+  archiveBankAccount:  (id) => jsonReq('DELETE', '/api/bank-accounts/' + id),
   bankTransactions:    (accountId) => fetch('/api/bank-transactions?account_id=' + accountId).then(r => r.json()),
   importTransactions:  (accountId, transactions) => jsonReq('POST', '/api/bank-transactions/import', { account_id: accountId, transactions }),
   matchTransaction:    (txId, invoiceId) => jsonReq('POST', '/api/bank-transactions/' + txId + '/match', { invoice_id: invoiceId }),
@@ -102,12 +103,12 @@ const api = {
   flowSummary:   () => fetch('/api/flows/summary').then(r => r.json()),
   createFlow:    (body) => jsonReq('POST', '/api/flows', body),
   updateFlow:    (id, body) => jsonReq('PUT', '/api/flows/' + id, body),
-  deleteFlow:    (id) => fetch('/api/flows/' + id, { method: 'DELETE' }).then(r => r.json()),
+  deleteFlow:    (id) => jsonReq('DELETE', '/api/flows/' + id),
 
   credentials:        () => fetch('/api/credentials').then(r => r.json()),
   createCredential:   (body) => jsonReq('POST', '/api/credentials', body),
   updateCredential:   (id, body) => jsonReq('PUT', '/api/credentials/' + id, body),
-  deleteCredential:   (id) => fetch('/api/credentials/' + id, { method: 'DELETE' }).then(r => r.json()),
+  deleteCredential:   (id) => jsonReq('DELETE', '/api/credentials/' + id),
   syncRuns:           () => fetch('/api/sync/runs').then(r => r.json()),
   syncAspire:         (accountId) => jsonReq('POST', '/api/sync/aspire/' + accountId, {}),
   system:             () => fetch('/api/system').then(r => r.json()),
@@ -119,7 +120,7 @@ const api = {
   dashboardConsolidated: () => fetch('/api/dashboard/consolidated').then(r => r.json()),
   fxRates:            () => fetch('/api/fx-rates').then(r => r.json()),
   putFxRate:          (currency, body) => jsonReq('PUT', '/api/fx-rates/' + currency, body),
-  deleteFxRate:       (currency) => fetch('/api/fx-rates/' + currency, { method: 'DELETE' }).then(r => r.json()),
+  deleteFxRate:       (currency) => jsonReq('DELETE', '/api/fx-rates/' + currency),
   getSetting:         (key) => fetch('/api/settings/' + key).then(r => r.json()),
   setSetting:         (key, value) => jsonReq('PUT', '/api/settings/' + key, { value }),
   me:                 () => fetch('/api/auth/me').then(r => r.json()),
@@ -127,7 +128,7 @@ const api = {
   users:              () => fetch('/api/users').then(r => r.json()),
   createUser:         (body) => jsonReq('POST', '/api/users', body),
   updateUser:         (id, body) => jsonReq('PUT', '/api/users/' + id, body),
-  deleteUser:         (id) => fetch('/api/users/' + id, { method: 'DELETE' }).then(r => r.json()),
+  deleteUser:         (id) => jsonReq('DELETE', '/api/users/' + id),
 };
 
 function jsonReq(method, url, body) {
@@ -325,18 +326,26 @@ document.querySelectorAll('.tab').forEach(btn => {
 // ==================================================================
 
 async function loadDashboard() {
+  // One failing endpoint must never blank the whole dashboard: each fetch falls back to a
+  // safe default, and each section renders inside its own guard.
+  const safe = (p, fallback) => p.catch(() => fallback);
   const [d, hero, trend, top, cons, tasks] = await Promise.all([
-    api.dashboard(), api.dashboardHero(), api.dashboardTrend(), api.dashboardTop(), api.dashboardConsolidated(),
-    api.tasks('open').catch(() => []),
+    safe(api.dashboard(), { today: '', counts: { contacts: 0, invoices: 0, bills: 0, contracts: 0, kyc: 0, bank_accounts: 0, flows: 0 } }),
+    safe(api.dashboardHero(), null),
+    safe(api.dashboardTrend(), null),
+    safe(api.dashboardTop(), null),
+    safe(api.dashboardConsolidated(), null),
+    safe(api.tasks('open'), []),
   ]);
-  document.getElementById('dash-today').textContent = d.today;
-  renderConsolidated(cons);
-  renderHero(hero);
-  renderTrend(trend);
-  renderTopCounterparties(top);
-  renderDashTasks(tasks);
-  renderRecent();
-  renderFirstRunIfEmpty(d.counts);
+  const sect = (fn) => { try { fn(); } catch (e) { console.error('dashboard section failed:', e); } };
+  document.getElementById('dash-today').textContent = d.today || '';
+  sect(() => renderConsolidated(cons));
+  sect(() => renderHero(hero));
+  sect(() => renderTrend(trend));
+  sect(() => renderTopCounterparties(top));
+  sect(() => renderDashTasks(tasks));
+  sect(() => renderRecent());
+  sect(() => renderFirstRunIfEmpty(d.counts));
 
   // counters
   const counters = [
@@ -432,7 +441,7 @@ document.getElementById('btn-backup').addEventListener('click', () => {
 });
 document.getElementById('btn-new-entity').addEventListener('click', () => openEntityDialog(null));
 document.getElementById('entity-cancel').addEventListener('click', () => entDlg.close());
-document.getElementById('entity-save').addEventListener('click', saveEntity);
+document.getElementById('entity-save').addEventListener('click', guardSave('entity-save', saveEntity));
 document.getElementById('juris-cancel').addEventListener('click', () => jurDlg.close());
 document.getElementById('juris-save').addEventListener('click', saveJuris);
 
@@ -625,10 +634,11 @@ async function saveJuris() {
 // ==================================================================
 
 async function loadReports() {
+  const safe = (p, fallback) => p.catch(() => fallback);
   const [pl, ar, ap] = await Promise.all([
-    api.reportPL(),
-    api.reportAging('sales'),
-    api.reportAging('purchase'),
+    safe(api.reportPL(), []),
+    safe(api.reportAging('sales'), []),
+    safe(api.reportAging('purchase'), []),
   ]);
   const plEl = document.getElementById('reports-pl');
   if (!pl.length) {
@@ -1181,8 +1191,8 @@ function renderContacts() {
       }
       if (btn.dataset.act === 'archive') {
         if (await uiConfirm('Archive this contact?')) {
-          await api.archiveContact(id);
-          await loadContacts();
+          try { await api.archiveContact(id); await loadContacts(); }
+          catch (err) { toast('Archive failed: ' + err.message, 'error'); }
         }
       }
       if (btn.dataset.act === 'del') {
@@ -1221,7 +1231,7 @@ const form = document.getElementById('contact-form');
 
 document.getElementById('btn-new-contact').addEventListener('click', () => openContactDialog(null));
 document.getElementById('contact-cancel').addEventListener('click', () => dlg.close());
-document.getElementById('contact-save').addEventListener('click', saveContact);
+document.getElementById('contact-save').addEventListener('click', guardSave('contact-save', saveContact));
 
 async function openContactDialog(id) {
   state.editingId = id;
@@ -1409,13 +1419,15 @@ async function saveContact() {
     .map(e => e.id)
     .filter(eid => form.elements['entity_' + eid]?.checked);
 
-  if (state.editingId) {
-    await api.updateContact(state.editingId, data);
-  } else {
-    await api.createContact(data);
-  }
-  dlg.close();
-  await loadContacts();
+  try {
+    if (state.editingId) {
+      await api.updateContact(state.editingId, data);
+    } else {
+      await api.createContact(data);
+    }
+    dlg.close();
+    await loadContacts();
+  } catch (err) { toast('Save failed: ' + err.message, 'error'); }
 }
 
 // ---------- entities tab ----------
@@ -1451,7 +1463,7 @@ document.getElementById('inv-direction').addEventListener('change', (e) => {
   applyInvoiceDirectionUI(e.target.value);
 });
 document.getElementById('invoice-cancel').addEventListener('click', () => invDlg.close());
-document.getElementById('invoice-save').addEventListener('click', saveInvoice);
+document.getElementById('invoice-save').addEventListener('click', guardSave('invoice-save', saveInvoice));
 document.getElementById('invoice-print').addEventListener('click', () => {
   if (state.invEditingId) {
     window.open('/invoices/' + state.invEditingId + '/print', '_blank');
@@ -1823,8 +1835,8 @@ function renderInvoices() {
       }
       if (btn.dataset.act === 'void') {
         if (await uiConfirm('Mark this invoice as void?')) {
-          await api.voidInvoice(id);
-          await loadInvoices();
+          try { await api.voidInvoice(id); await loadInvoices(); }
+          catch (err) { toast('Void failed: ' + err.message, 'error'); }
         }
       }
       if (btn.dataset.act === 'del') {
@@ -1905,8 +1917,13 @@ document.getElementById('bulk-void').addEventListener('click', async () => {
   const ids = Array.from(document.querySelectorAll('#invoices-table tbody .row-check:checked')).map(c => Number(c.dataset.id));
   if (!ids.length) return;
   if (!await uiConfirm(`Mark ${ids.length} invoice(s) as void?`)) return;
-  for (const id of ids) await api.voidInvoice(id);
-  toast(`Voided ${ids.length} invoice(s)`, 'ok');
+  let ok = 0; const fails = [];
+  for (const id of ids) {
+    try { await api.voidInvoice(id); ok++; }
+    catch (err) { fails.push(err.message); }
+  }
+  if (fails.length) toast(`Voided ${ok}/${ids.length}. ${fails.length} failed: ${fails[0]}`, ok ? 'warn' : 'error');
+  else toast(`Voided ${ok} invoice(s)`, 'ok');
   await loadInvoices();
 });
 
@@ -2190,14 +2207,16 @@ async function saveInvoice() {
   if (!data.entity_id)  { toast('Entity required', 'warn'); return; }
   if (!data.contact_id) { toast('Customer required', 'warn'); return; }
   if (!data.currency)   { toast('Currency required', 'warn'); return; }
-  if (state.invEditingId) {
-    await api.updateInvoice(state.invEditingId, data);
-  } else {
-    await api.createInvoice(data);
-    clearInvoiceDraft();
-  }
-  invDlg.close();
-  await loadInvoices();
+  try {
+    if (state.invEditingId) {
+      await api.updateInvoice(state.invEditingId, data);
+    } else {
+      await api.createInvoice(data);
+      clearInvoiceDraft();
+    }
+    invDlg.close();
+    await loadInvoices();
+  } catch (err) { toast('Save failed: ' + err.message, 'error'); }
 }
 
 // ==================================================================
@@ -2209,7 +2228,7 @@ const ctForm = document.getElementById('contract-form');
 
 document.getElementById('btn-new-contract').addEventListener('click', () => openContractDialog(null));
 document.getElementById('contract-cancel').addEventListener('click', () => ctDlg.close());
-document.getElementById('contract-save').addEventListener('click', saveContract);
+document.getElementById('contract-save').addEventListener('click', guardSave('contract-save', saveContract));
 document.getElementById('contract-search').addEventListener('input', (e) => { state.ctFilterText = e.target.value; renderContracts(); });
 document.getElementById('contract-filter-entity').addEventListener('change', (e) => { state.ctFilterEntity = e.target.value; renderContracts(); });
 document.getElementById('contract-filter-status').addEventListener('change', (e) => { state.ctFilterStatus = e.target.value; renderContracts(); });
@@ -2266,8 +2285,8 @@ function renderContracts() {
       if (btn.dataset.act === 'edit') openContractDialog(id);
       if (btn.dataset.act === 'terminate') {
         if (await uiConfirm('Mark this contract as terminated?')) {
-          await api.archiveContract(id);
-          await loadContracts();
+          try { await api.archiveContract(id); await loadContracts(); }
+          catch (err) { toast('Terminate failed: ' + err.message, 'error'); }
         }
       }
       if (btn.dataset.act === 'del') {
@@ -2366,7 +2385,7 @@ const kycForm = document.getElementById('kyc-form');
 
 document.getElementById('btn-new-kyc').addEventListener('click', () => openKycDialog(null));
 document.getElementById('kyc-cancel').addEventListener('click', () => kycDlg.close());
-document.getElementById('kyc-save').addEventListener('click', saveKyc);
+document.getElementById('kyc-save').addEventListener('click', guardSave('kyc-save', saveKyc));
 document.getElementById('kyc-search').addEventListener('input', (e) => { state.kycFilterText = e.target.value; renderKyc(); });
 document.getElementById('kyc-filter-status').addEventListener('change', (e) => { state.kycFilterStatus = e.target.value; renderKyc(); });
 document.getElementById('kyc-filter-risk').addEventListener('change', (e) => { state.kycFilterRisk = e.target.value; renderKyc(); });
@@ -2421,8 +2440,8 @@ function renderKyc() {
       if (btn.dataset.act === 'edit') openKycDialog(id);
       if (btn.dataset.act === 'delete') {
         if (await uiConfirm('Delete KYC record and all its documents?')) {
-          await api.deleteKyc(id);
-          await loadKyc();
+          try { await api.deleteKyc(id); await loadKyc(); }
+          catch (err) { toast('Delete failed: ' + err.message, 'error'); }
         }
       }
     });
@@ -2484,9 +2503,11 @@ function renderKycDocsList(docs) {
     btn.addEventListener('click', async (e) => {
       const docId = Number(e.target.closest('li').dataset.id);
       if (!await uiConfirm('Delete this document?')) return;
-      await api.deleteKycDoc(docId);
-      const fresh = await api.kyc(state.kycEditingId);
-      renderKycDocsList(fresh.documents);
+      try {
+        await api.deleteKycDoc(docId);
+        const fresh = await api.kyc(state.kycEditingId);
+        renderKycDocsList(fresh.documents);
+      } catch (err) { toast('Delete failed: ' + err.message, 'error'); }
     });
   });
 }
@@ -2527,7 +2548,7 @@ const baForm = document.getElementById('bank-acct-form');
 
 document.getElementById('btn-new-bank-account').addEventListener('click', () => openBankAcctDialog(null));
 document.getElementById('bank-acct-cancel').addEventListener('click', () => baDlg.close());
-document.getElementById('bank-acct-save').addEventListener('click', saveBankAcct);
+document.getElementById('bank-acct-save').addEventListener('click', guardSave('bank-acct-save', saveBankAcct));
 
 document.getElementById('btn-import-csv').addEventListener('click', () => {
   if (!state.bankCurrentAccountId) { toast('Select an account first', 'warn'); return; }
@@ -2723,8 +2744,8 @@ function renderBankAccounts() {
       if (btn.dataset.act === 'edit') openBankAcctDialog(id);
       if (btn.dataset.act === 'archive') {
         if (await uiConfirm('Archive this account?')) {
-          await api.archiveBankAccount(id);
-          await loadBanks();
+          try { await api.archiveBankAccount(id); await loadBanks(); }
+          catch (err) { toast('Archive failed: ' + err.message, 'error'); }
         }
       }
       if (btn.dataset.act === 'del') {
@@ -2873,7 +2894,7 @@ const flowForm = document.getElementById('flow-form');
 
 document.getElementById('btn-new-flow').addEventListener('click', () => openFlowDialog(null));
 document.getElementById('flow-cancel').addEventListener('click', () => flowDlg.close());
-document.getElementById('flow-save').addEventListener('click', saveFlow);
+document.getElementById('flow-save').addEventListener('click', guardSave('flow-save', saveFlow));
 
 async function loadFlows() {
   const [list, summary] = await Promise.all([api.flows(), api.flowSummary()]);
@@ -2978,8 +2999,8 @@ function renderFlows() {
       if (btn.dataset.act === 'edit') openFlowDialog(id);
       if (btn.dataset.act === 'delete') {
         if (await uiConfirm('Delete this flow?')) {
-          await api.deleteFlow(id);
-          await loadFlows();
+          try { await api.deleteFlow(id); await loadFlows(); }
+          catch (err) { toast('Delete failed: ' + err.message, 'error'); }
         }
       }
     });
@@ -3077,7 +3098,7 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 });
 
 // --- Self-service password change ---
-const accountDlg = document.getElementById('account-dialog');
+const accountDlg = document.getElementById('password-dialog');
 document.getElementById('user-meta-clickable').addEventListener('click', () => {
   document.getElementById('account-form').reset();
   accountDlg.showModal();
@@ -4210,7 +4231,8 @@ function escapeHtml(s) {
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 // ---------- Notifications inbox ----------
@@ -4690,7 +4712,7 @@ function openGlobalSearch() {
       await loadTasks();
     } catch (err) { toast('Save failed: ' + err.message, 'error'); }
   });
-  window.loadTasks = async function () {
+  loadTasks = async function () {
     const status = document.getElementById('tasks-filter-status')?.value || '';
     const rows = await api.tasks(status);
     const tbody = document.querySelector('#tasks-table tbody');
