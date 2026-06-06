@@ -236,6 +236,32 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (dd(ra1 - ra0) !== 600) die(`reports aging should net payments: delta ${dd(ra1 - ra0)} != 600 outstanding (gross would be 1000)`);
   ok('reports aging nets payments (outstanding 600, not gross 1000)');
 
+  // 23) Money-flow kind: transfers post to equity, NOT the P&L (only income/expense do)
+  const stk0 = await api('GET', '/api/ledger/statements?entity_id=1');
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 700, currency: 'HKD', kind: 'transfer', from_entity_id: 1, to_contact_id: 2 });
+  const stk1 = await api('GET', '/api/ledger/statements?entity_id=1');
+  if (dd(stk1.pl.expenses - stk0.pl.expenses) !== 0) die(`transfer flow wrongly hit expenses (delta ${dd(stk1.pl.expenses - stk0.pl.expenses)}, should be 0)`);
+  if (dd(stk1.pl.income - stk0.pl.income) !== 0) die('transfer flow wrongly hit income');
+  t = await tb();
+  if (!t.balanced) die('after transfer flow not balanced');
+  ok('money-flow transfer posts to equity, not P&L (income/expense unchanged, balanced)');
+
+  // 24) Deleting a payment leaves NO stale ledger rows (trial balance back to pre-payment)
+  const payInv = await api('POST', '/api/invoices', { entity_id: 1, contact_id: 2, currency: 'HKD', status: 'sent', direction: 'sales', issue_date: TODAY, lines: [{ description: 'pay-del', quantity: 1, unit_price: 900, tax_rate: 0 }] });
+  const preDebit = (await tb()).totalDebit;
+  const pay = await api('POST', `/api/invoices/${payInv.id}/payments`, { amount: 900, paid_on: TODAY });
+  await api('DELETE', `/api/invoices/payments/${pay.id}`);
+  t = await tb();
+  if (!t.balanced) die('after payment delete not balanced');
+  if (dd(t.totalDebit) !== dd(preDebit)) die(`payment delete left stale rows: totalDebit ${t.totalDebit} != ${preDebit} pre-payment`);
+  ok('deleting a payment clears its ledger legs (trial balance back to pre-payment)');
+
+  // 25) A newly created entity is seeded with the starter chart of accounts
+  const ent = await api('POST', '/api/entities', { code: 'TST', legal_name: 'Test Co', jurisdiction_code: 'hk', base_currency: 'HKD' });
+  const newAccts = await api('GET', `/api/ledger/accounts?entity_id=${ent.id}`);
+  if (!newAccts.find(a => a.code === '4000') || !newAccts.find(a => a.code === '1100')) die(`new entity not seeded with chart (got ${newAccts.length} accounts)`);
+  ok('new entity is seeded with the starter chart of accounts');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

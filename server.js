@@ -499,7 +499,11 @@ function postMoneyFlow(flowId) {
       const e = db.prepare('SELECT base_currency FROM entities WHERE id = ?').get(entityId);
       if (!e) return;
       const base = baseConvert(f.amount, f.currency, e.base_currency);
-      const legs = dir === 'in' ? [['1010', 'debit'], ['4000', 'credit']] : [['5000', 'debit'], ['1010', 'credit']];
+      // Map flow kind → contra account. Only real income/expense hit the P&L;
+      // capital / dividend / transfer / loan / anything else post against equity
+      // (a balance-sheet movement) so transfers don't fabricate revenue/expense.
+      const contra = f.kind === 'income' ? '4000' : f.kind === 'expense' ? '5000' : '3000';
+      const legs = dir === 'in' ? [['1010', 'debit'], [contra, 'credit']] : [[contra, 'debit'], ['1010', 'credit']];
       for (const [code, d] of legs) ins.run({ entity_id: entityId, txn_id: 'flow-' + flowId + '-' + dir, event_date: f.flow_date, account_code: code, direction: d, amount: round2(f.amount), currency: f.currency, amount_base: base, description: desc, source_id: flowId });
     };
     if (f.to_entity_id) post(f.to_entity_id, 'in');
@@ -1188,6 +1192,7 @@ app.post('/api/entities', (req, res) => {
   // seed an invoice sequence for the new entity
   db.prepare(`INSERT OR IGNORE INTO invoice_sequences (entity_id, prefix, next_number, pad_width) VALUES (?, ?, 1, 4)`)
     .run(id, data.code + '-');
+  seedChartOfAccounts(); // give the new entity its starter chart (idempotent INSERT OR IGNORE)
   const after = db.prepare('SELECT * FROM entities WHERE id = ?').get(id);
   audit('entities', id, 'insert', null, after);
   res.json(after);
@@ -3535,6 +3540,9 @@ app.delete('/api/invoices/payments/:pid', (req, res) => {
   const before = db.prepare('SELECT * FROM invoice_payments WHERE id = ?').get(pid);
   if (!before) return res.status(404).json({ error: 'not found' });
   db.prepare('DELETE FROM invoice_payments WHERE id = ?').run(pid);
+  // clearInvoiceLedger keys payment legs off rows still in invoice_payments, so the
+  // just-deleted payment's legs would orphan — remove them explicitly before reposting.
+  db.prepare("DELETE FROM ledger_entries WHERE source_table='invoice_payments' AND source_id = ?").run(pid);
   recomputeInvoicePaidStatus(before.invoice_id);
   postInvoiceFull(before.invoice_id);
   audit('invoice_payments', pid, 'delete', before, null);
