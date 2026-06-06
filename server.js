@@ -450,17 +450,24 @@ function postInvoiceFull(invoiceId) {
     const sales = inv.direction !== 'purchase';
     const groups = [];
 
-    // Invoice header
+    // Invoice header. The AR/AP (total) leg's base is the RESIDUAL of the other legs so the entry
+    // balances to the cent. Rounding every leg independently could drift > 0.01 and throw — which
+    // (with the swallow that used to be below) left the invoice with NO ledger entries: silent
+    // under-statement on tax-bearing foreign-currency invoices.
     const hdr = [];
     const mk = (code, dir, amt) => ({ code, dir, amount: round2(amt), base: round2(amt * fx) });
     if (sales) {
-      hdr.push(mk('1100', 'debit', inv.total));
-      hdr.push(mk('4000', 'credit', inv.subtotal));
-      if (inv.tax_total) hdr.push(mk('2100', 'credit', inv.tax_total));
+      const rev = mk('4000', 'credit', inv.subtotal);
+      const tax = inv.tax_total ? mk('2100', 'credit', inv.tax_total) : null;
+      hdr.push({ code: '1100', dir: 'debit', amount: round2(inv.total), base: round2(rev.base + (tax ? tax.base : 0)) });
+      hdr.push(rev);
+      if (tax) hdr.push(tax);
     } else {
-      hdr.push(mk('5000', 'debit', inv.subtotal));
-      if (inv.tax_total) hdr.push(mk('1200', 'debit', inv.tax_total));
-      hdr.push(mk('2000', 'credit', inv.total));
+      const exp = mk('5000', 'debit', inv.subtotal);
+      const tax = inv.tax_total ? mk('1200', 'debit', inv.tax_total) : null;
+      hdr.push(exp);
+      if (tax) hdr.push(tax);
+      hdr.push({ code: '2000', dir: 'credit', amount: round2(inv.total), base: round2(exp.base + (tax ? tax.base : 0)) });
     }
     groups.push({ txn: 'inv-' + invoiceId, date: inv.issue_date || (inv.created_at || '').slice(0, 10), lines: hdr, srcTable: 'invoices', srcId: invoiceId });
 
@@ -484,7 +491,7 @@ function postInvoiceFull(invoiceId) {
       });
     }
   });
-  try { run(); } catch (e) { console.error('postInvoiceFull failed for', invoiceId, e.message); }
+  run(); // Throws on imbalance/DB error so write paths roll back atomically; the boot backfill tolerates per-row.
 }
 function clearInvoiceLedger(invoiceId) {
   db.prepare(
@@ -494,7 +501,7 @@ function clearInvoiceLedger(invoiceId) {
 }
 // One-time backfill of existing invoices that have no ledger footprint yet.
 for (const r of db.prepare(`SELECT i.id FROM invoices i WHERE NOT EXISTS (SELECT 1 FROM ledger_entries le WHERE le.txn_id = 'inv-' || i.id)`).all()) {
-  postInvoiceFull(r.id);
+  try { postInvoiceFull(r.id); } catch (e) { console.error('backfill posting failed for invoice', r.id, e.message); }
 }
 
 // Convert an amount to an entity's base currency via fx_rates (rate_to_usd cross-rate).
@@ -502,7 +509,9 @@ for (const r of db.prepare(`SELECT i.id FROM invoices i WHERE NOT EXISTS (SELECT
 function baseConvert(amount, fromCcy, baseCcy) {
   if (!fromCcy || !baseCcy || fromCcy === baseCcy) return round2(amount);
   const rf = getRateToUSD(fromCcy), rb = getRateToUSD(baseCcy);
-  return (rf && rb) ? round2(amount * rf / rb) : round2(amount);
+  if (rf && rb) return round2(amount * rf / rb);
+  console.warn(`baseConvert: no FX rate ${fromCcy}->${baseCcy}; posting ${amount} ${fromCcy} as base unconverted. Add the rate under Ops & Settings -> Currencies.`);
+  return round2(amount);
 }
 // Money flows → ledger. Non-invoice cash events only (invoice-linked flows are
 // already captured by the invoice/payment posting). Inflow = income, outflow =
@@ -1494,12 +1503,12 @@ app.post('/api/invoices', (req, res) => {
       );
     });
     recomputeInvoiceTotals(id);
+    postInvoiceFull(id); // inside the tx: a posting failure rolls back the whole invoice insert
     return id;
   });
   const id = tx();
   const after = loadInvoice(id);
   audit('invoices', id, 'insert', null, after);
-  postInvoiceFull(id);
   fireWebhook('invoice.created', { id: after.id, number: after.number, currency: after.currency, total: after.total, direction: after.direction });
   res.json(after);
 });
@@ -1569,11 +1578,11 @@ app.put('/api/invoices/:id', (req, res) => {
       });
     }
     recomputeInvoiceTotals(id);
+    postInvoiceFull(id); // inside the tx: a posting failure rolls back the invoice edit
   });
   tx();
   const after = loadInvoice(id);
   audit('invoices', id, 'update', before, after);
-  postInvoiceFull(id);
   if (before.status !== after.status) {
     if (after.status === 'paid') fireWebhook('invoice.paid', { id: after.id, number: after.number, total: after.total, currency: after.currency });
     if (after.status === 'void') fireWebhook('invoice.void', { id: after.id, number: after.number });
@@ -2446,8 +2455,17 @@ function normaliseFlow(body) {
   if (!o.kind) o.kind = 'transfer';
   if (!o.fx_rate_to_usd) o.fx_rate_to_usd = 1.0;
   o.amount = Number(o.amount);
+  if (!Number.isFinite(o.amount) || o.amount <= 0) throw new Error('amount must be a positive number');
   o.fx_rate_to_usd = Number(o.fx_rate_to_usd);
+  if (!Number.isFinite(o.fx_rate_to_usd) || o.fx_rate_to_usd <= 0) throw new Error('fx_rate_to_usd must be a positive number');
   o.currency = String(o.currency).toUpperCase();
+  // Referenced entities/contacts must exist (these columns carry no DB-level foreign key,
+  // and postMoneyFlow silently drops a bad entity id, leaving a flow with no ledger footprint).
+  const refOk = (table, id) => id == null || !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
+  if (!refOk('entities', o.from_entity_id)) throw new Error('from_entity_id does not exist');
+  if (!refOk('entities', o.to_entity_id))   throw new Error('to_entity_id does not exist');
+  if (!refOk('contacts', o.from_contact_id)) throw new Error('from_contact_id does not exist');
+  if (!refOk('contacts', o.to_contact_id))   throw new Error('to_contact_id does not exist');
   return o;
 }
 
@@ -3621,6 +3639,7 @@ function recomputeInvoicePaidStatus(invoiceId) {
   let newStatus = inv.status;
   if (paid >= inv.total && inv.total > 0) newStatus = 'paid';
   else if (paid > 0 && inv.status === 'draft') newStatus = 'sent';
+  else if (paid < inv.total && inv.status === 'paid') newStatus = 'sent'; // payment removed -> reopen (was stuck 'paid')
   db.prepare(`UPDATE invoices SET amount_paid = ?, status = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(paid, newStatus, invoiceId);
 }
@@ -3637,8 +3656,10 @@ app.post('/api/invoices/:id/payments', (req, res) => {
   if (!inv) return res.status(404).json({ error: 'not found' });
   const body = req.body || {};
   const amount = Number(body.amount);
-  if (!amount) return res.status(400).json({ error: 'amount required' });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'a positive amount is required' });
   const paidOn = body.paid_on || new Date().toISOString().slice(0, 10);
+  const lock = checkPeriodLock(inv.entity_id, paidOn);
+  if (lock) return res.status(409).json({ error: lock });
   const result = db.prepare(`
     INSERT INTO invoice_payments (invoice_id, paid_on, amount, method, reference, notes)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -3653,6 +3674,9 @@ app.delete('/api/invoices/payments/:pid', (req, res) => {
   const pid = Number(req.params.pid);
   const before = db.prepare('SELECT * FROM invoice_payments WHERE id = ?').get(pid);
   if (!before) return res.status(404).json({ error: 'not found' });
+  const pinv = db.prepare('SELECT entity_id FROM invoices WHERE id = ?').get(before.invoice_id);
+  const lock = pinv && checkPeriodLock(pinv.entity_id, before.paid_on);
+  if (lock) return res.status(409).json({ error: lock });
   db.prepare('DELETE FROM invoice_payments WHERE id = ?').run(pid);
   // clearInvoiceLedger keys payment legs off rows still in invoice_payments, so the
   // just-deleted payment's legs would orphan — remove them explicitly before reposting.
@@ -4608,6 +4632,7 @@ app.get('/api/dashboard/consolidated', (req, res) => {
   const ytdStart = new Date().getFullYear() + '-01-01';
   let cash = 0, ar = 0, ap = 0, revenue = 0, expense = 0;
   const breakdown = [];
+  let fxMissing = false;
   for (const e of entities) {
     const cashLocal    = (db.prepare(`SELECT COALESCE(SUM(a.opening_balance + COALESCE((SELECT SUM(t.amount) FROM bank_transactions t WHERE t.account_id = a.id), 0)),0) AS s FROM bank_accounts a WHERE a.entity_id=? AND a.status='active'`).get(e.id).s) || 0;
     const arLocal      = (db.prepare(`SELECT COALESCE(SUM(total),0) AS s FROM invoices WHERE entity_id=? AND direction='sales'    AND status IN ('draft','sent')`).get(e.id).s) || 0;
@@ -4619,13 +4644,15 @@ app.get('/api/dashboard/consolidated', (req, res) => {
     const apConv   = convert(apLocal,   e.base_currency, reporting);
     const revConv  = convert(revLocal,  e.base_currency, reporting);
     const expConv  = convert(expLocal,  e.base_currency, reporting);
+    const eFxMissing = [cashConv, arConv, apConv, revConv, expConv].some(v => v === null);
+    if (eFxMissing) fxMissing = true;
     cash    += cashConv || 0;
     ar      += arConv   || 0;
     ap      += apConv   || 0;
     revenue += revConv  || 0;
     expense += expConv  || 0;
     breakdown.push({
-      code: e.code, base_currency: e.base_currency,
+      code: e.code, base_currency: e.base_currency, fx_missing: eFxMissing,
       cash_local: cashLocal, cash_reporting: cashConv,
       ar_local: arLocal, ar_reporting: arConv,
       revenue_local: revLocal, revenue_reporting: revConv,
@@ -4635,8 +4662,11 @@ app.get('/api/dashboard/consolidated', (req, res) => {
     reporting_currency: reporting,
     cash, ar, ap, revenue, expense,
     net_ytd: revenue - expense,
+    fx_missing: fxMissing,
     breakdown,
-    note: 'FX conversion uses rates from /api/fx-rates. Edit them under Ops & Settings → Currencies.',
+    note: fxMissing
+      ? `Some entities have no FX rate to ${reporting} and are counted as 0 — totals are incomplete. Add rates under Ops & Settings → Currencies.`
+      : 'FX conversion uses rates from /api/fx-rates. Edit them under Ops & Settings → Currencies.',
   });
 });
 
