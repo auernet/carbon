@@ -1,5 +1,13 @@
 :root {
   --radius: 8px;
+  /* Redesign tokens — also set per-theme below; mirrored here so the layout never collapses
+     if data-theme is ever absent (JS off, pre-paint, print/screenshot context). */
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --divider: rgba(255, 255, 255, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
   --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 
   /* dark = default; overridden below by prefers-color-scheme and data-theme */
@@ -283,6 +291,14 @@ input, select, textarea, button {
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent-2);
+}
+
+/* Keyboard focus ring for all interactive controls (buttons, tabs, links, row actions).
+   Lower specificity than input:focus, so inputs keep their border-based focus and don't
+   double up — but previously un-indicated controls finally get a visible focus state. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button {

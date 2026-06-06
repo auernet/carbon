@@ -699,7 +699,13 @@ async function loadReports() {
     const tbody = document.querySelector('#qoq-table tbody');
     if (tbody) {
       tbody.innerHTML = qoq.length ? qoq.map(r => {
-        const delta = (v) => v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'date-warning' : ''}" style="${v >= 0 ? 'color:var(--accent)' : 'color:var(--danger)'}">${v >= 0 ? '+' : ''}${v}%</span>`;
+        // riseIsBad=true for expenses: a rising cost is bad (danger), a falling cost is good (accent).
+        const delta = (v, riseIsBad = false) => {
+          if (v == null) return '<span class="muted">—</span>';
+          const good = riseIsBad ? v < 0 : v >= 0;
+          const color = v === 0 ? 'var(--muted)' : good ? 'var(--accent)' : 'var(--danger)';
+          return `<span style="color:${color}">${v >= 0 ? '+' : ''}${v}%</span>`;
+        };
         return `
           <tr>
             <td><span class="pill">${escapeHtml(r.entity_code)}</span></td>
@@ -707,7 +713,7 @@ async function loadReports() {
             <td class="num">${escapeHtml(r.base_currency)} ${fmtMoney(r.current_revenue)}</td>
             <td class="num">${delta(r.revenue_delta_pct)}</td>
             <td class="num">${escapeHtml(r.base_currency)} ${fmtMoney(r.current_expense)}</td>
-            <td class="num">${delta(r.expense_delta_pct)}</td>
+            <td class="num">${delta(r.expense_delta_pct, true)}</td>
             <td class="num"><strong>${escapeHtml(r.base_currency)} ${fmtMoney(r.current_net)}</strong></td>
           </tr>
         `;
