@@ -93,6 +93,7 @@ const api = {
   updateAccount:      (eid, code, body) => jsonReq('PUT', '/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, body),
   deleteAccount:      (eid, code) => fetch('/api/ledger/accounts/' + encodeURIComponent(code) + '?entity_id=' + eid, { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   ledgerAging:        (eid, asOf) => fetch('/api/ledger/aging?entity_id=' + eid + (asOf ? '&as_of=' + asOf : '')).then(r => r.json()),
+  cashflow:           (eid, from, to) => fetch('/api/ledger/cashflow?entity_id=' + eid + (from ? '&from=' + from : '') + (to ? '&to=' + to : '')).then(r => r.json()),
   postJournal:        (body) => jsonReq('POST', '/api/ledger/journal', body),
   deleteJournal:      (txnId) => fetch('/api/ledger/journal/' + encodeURIComponent(txnId), { method: 'DELETE' }).then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }),
   reportAging:   (direction) => fetch('/api/reports/aging?direction=' + direction).then(r => r.json()),
@@ -3641,6 +3642,20 @@ function renderLedgerAging(elId, data, peopleLabel) {
     + (top ? `<div class="muted" style="font-size:11px;margin:10px 0 4px">By ${peopleLabel}</div><table><tbody>${top}</tbody></table>` : '');
 }
 
+function renderCashflow(elId, data) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!data || data.__error) { el.innerHTML = '<div class="muted dash-empty">Couldn\'t load cash flow.</div>'; return; }
+  if (!data.accounts || !data.accounts.length) { el.innerHTML = '<div class="muted dash-empty">No cash accounts with activity.</div>'; return; }
+  const fmt = n => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const t = data.total;
+  el.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:8px">${data.from ? data.from + ' → ' + data.to : 'All time'}</div>`
+    + `<table><thead><tr><th>Account</th><th class="num">Opening</th><th class="num">Cash in</th><th class="num">Cash out</th><th class="num">Closing</th></tr></thead><tbody>`
+    + data.accounts.map(a => `<tr><td>${escapeHtml(a.code)} <span class="muted">${escapeHtml(a.name || '')}</span></td><td class="num">${fmt(a.opening)}</td><td class="num">${fmt(a.cash_in)}</td><td class="num">${fmt(a.cash_out)}</td><td class="num">${fmt(a.closing)}</td></tr>`).join('')
+    + `<tr style="border-top:2px solid var(--border)"><td><strong>Total</strong></td><td class="num"><strong>${fmt(t.opening)}</strong></td><td class="num"><strong>${fmt(t.cash_in)}</strong></td><td class="num"><strong>${fmt(t.cash_out)}</strong></td><td class="num"><strong>${fmt(t.closing)}</strong></td></tr></tbody></table>`
+    + `<div style="font-size:12px;margin-top:6px">Net change <strong>${fmt(t.net_change)}</strong></div>`;
+}
+
 async function loadLedger() {
   const sel = document.getElementById('ledger-entity');
   if (sel && !sel.options.length) {
@@ -3674,6 +3689,7 @@ async function loadLedger() {
   const prior = priorWindow(per && per.value, now); // null for "All time"
 
   const agingP = api.ledgerAging(eid, to || iso(now)).catch(() => ({ __error: true })); // isolated: aging failure won't blank the statements
+  const cashflowP = api.cashflow(eid, from, to).catch(() => ({ __error: true }));
   const fetches = [api.ledgerTrialBalance(eid, to), api.ledgerEntries(eid, from, to), api.ledgerStatements(eid, from, to)];
   if (prior) fetches.push(api.ledgerStatements(eid, prior.from, prior.to));
   const [tb, entries, st, stPrior] = await Promise.all(fetches);
@@ -3728,6 +3744,7 @@ async function loadLedger() {
     renderLedgerAging('ledger-ar-aging', ag && ag.ar, 'customer');
     renderLedgerAging('ledger-ap-aging', ag && ag.ap, 'supplier');
   }
+  renderCashflow('ledger-cashflow', await cashflowP);
 
   if (!tb.rows.length) {
     trialEl.innerHTML = '<div class="muted dash-empty">No postings yet — issue an invoice and it appears here.</div>';

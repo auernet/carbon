@@ -262,6 +262,16 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (!newAccts.find(a => a.code === '4000') || !newAccts.find(a => a.code === '1100')) die(`new entity not seeded with chart (got ${newAccts.length} accounts)`);
   ok('new entity is seeded with the starter chart of accounts');
 
+  // 26) Cash flow: movement in cash/bank accounts (in/out/net reconcile, delta-based)
+  const cf0 = await api('GET', '/api/ledger/cashflow?entity_id=1');
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 321, currency: 'HKD', kind: 'income', to_entity_id: 1, from_contact_id: 2 });   // DR Bank 321
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 111, currency: 'HKD', kind: 'expense', from_entity_id: 1, to_contact_id: 2 });  // CR Bank 111
+  const cf1 = await api('GET', '/api/ledger/cashflow?entity_id=1');
+  if (dd(cf1.total.cash_in - cf0.total.cash_in) !== 321) die(`cashflow cash_in delta ${dd(cf1.total.cash_in - cf0.total.cash_in)} != 321`);
+  if (dd(cf1.total.cash_out - cf0.total.cash_out) !== 111) die(`cashflow cash_out delta != 111`);
+  if (dd(cf1.total.net_change - cf0.total.net_change) !== 210) die(`cashflow net_change delta != 210`);
+  ok('cash flow: bank in/out movement and net change reconcile (in 321, out 111, net 210)');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);

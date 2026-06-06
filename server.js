@@ -3168,6 +3168,43 @@ app.get('/api/ledger/aging', (req, res) => {
   res.json({ as_of: asOf, ar: pack(side.sales), ap: pack(side.purchase) });
 });
 
+// Cash flow — movement in the cash/bank accounts over [from,to]: opening balance,
+// cash in, cash out, closing, per account. Net change reconciles with the change
+// in cash on the balance sheet. (Covers the seeded cash accounts 1000/1010/1090.)
+const CASH_ACCOUNTS = ['1000', '1010', '1090'];
+app.get('/api/ledger/cashflow', (req, res) => {
+  const eid = Number(req.query.entity_id) || null;
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '') ? req.query.from : null;
+  const to   = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to   || '') ? req.query.to   : null;
+  const cond = [`le.account_code IN (${CASH_ACCOUNTS.map(() => '?').join(',')})`], args = [...CASH_ACCOUNTS];
+  if (eid) { cond.push('le.entity_id=?'); args.push(eid); }
+  if (to)  { cond.push('le.event_date<=?'); args.push(to); }
+  const rows = db.prepare(`
+    SELECT le.account_code, coa.name AS account_name, le.event_date, le.direction, le.amount_base
+      FROM ledger_entries le
+      LEFT JOIN chart_of_accounts coa ON coa.code=le.account_code AND coa.entity_id=le.entity_id
+     WHERE ${cond.join(' AND ')}
+  `).all(...args);
+  const acc = {};
+  for (const r of rows) {
+    const a = acc[r.account_code] || (acc[r.account_code] = { code: r.account_code, name: r.account_name, opening: 0, cash_in: 0, cash_out: 0 });
+    const signed = r.direction === 'debit' ? r.amount_base : -r.amount_base;
+    if (from && r.event_date < from) a.opening += signed;            // before the window → opening balance
+    else if (r.direction === 'debit') a.cash_in += r.amount_base;    // within window
+    else a.cash_out += r.amount_base;
+  }
+  const accounts = Object.values(acc).map(a => ({
+    code: a.code, name: a.name,
+    opening: round2(a.opening), cash_in: round2(a.cash_in), cash_out: round2(a.cash_out),
+    closing: round2(a.opening + a.cash_in - a.cash_out),
+  })).sort((x, y) => x.code.localeCompare(y.code));
+  const sum = (k) => round2(accounts.reduce((s, a) => s + a[k], 0));
+  res.json({
+    from, to, accounts,
+    total: { opening: sum('opening'), cash_in: sum('cash_in'), cash_out: sum('cash_out'), closing: sum('closing'), net_change: round2(sum('cash_in') - sum('cash_out')) },
+  });
+});
+
 // ==================================================================
 // Aspire adapter (Connect API — Bank Feed)
 // Docs: https://aspireapp.com/hk/api
