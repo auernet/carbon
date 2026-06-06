@@ -71,6 +71,27 @@ if (!dbExisted) console.log('Carbon DB initialised at', DB_PATH);
 // user is in the DB. Survives test wipes and `DELETE FROM users`.
 const BOOTSTRAP_ADMIN_PATH = path.join(DATA_DIR, '.carbon-admin.json');
 function ensureBootstrapAdmin() {
+  // Env override (preferred for production): set BOOTSTRAP_ADMIN_EMAIL + BOOTSTRAP_ADMIN_PASSWORD
+  // in the host environment so the live admin password is NEVER stored in the repo. Takes
+  // precedence over the on-disk file and is re-applied (idempotently) every boot.
+  const envEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || '').trim();
+  const envPass = process.env.BOOTSTRAP_ADMIN_PASSWORD || '';
+  if (envEmail && envPass) {
+    try {
+      const { hash, salt } = hashPassword(envPass);
+      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(envEmail);
+      if (existing) {
+        db.prepare(`UPDATE users SET password_hash=?, password_salt=?, status='active', role='admin' WHERE id=?`)
+          .run(hash, salt, existing.id);
+      } else {
+        db.prepare(`INSERT INTO users (email, password_hash, password_salt, display_name, role, status)
+                    VALUES (?, ?, ?, ?, 'admin', 'active')`)
+          .run(envEmail, hash, salt, envEmail);
+        console.log('bootstrap admin created from BOOTSTRAP_ADMIN_* env');
+      }
+      return;
+    } catch (e) { console.error('bootstrap admin (env) apply failed:', e.message); }
+  }
   if (!fs.existsSync(BOOTSTRAP_ADMIN_PATH)) return;
   try {
     const cfg = JSON.parse(fs.readFileSync(BOOTSTRAP_ADMIN_PATH, 'utf8'));
@@ -783,11 +804,11 @@ const COOKIE_SECURE_FLAG = IS_PROD ? '; Secure' : '';
 
 function setSessionCookie(res, sid) {
   const maxAge = SESSION_TTL_DAYS * 86400;
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${COOKIE_SECURE_FLAG}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${COOKIE_SECURE_FLAG}`);
 }
 
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${COOKIE_SECURE_FLAG}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${COOKIE_SECURE_FLAG}`);
 }
 
 function usersExist() {
@@ -870,12 +891,16 @@ function getApiToken(req) {
   return row || null;
 }
 
-// Auth gate: /api/* and /invoices/* (print views) need a valid session OR API token.
+// Auth gate: DEFAULT-DENY. Everything needs a valid session or API token EXCEPT an explicit
+// public allowlist (the landing page, /api/auth/*, and static assets). Token-gated public
+// routes (share links, iCal feed, /healthz) are registered ABOVE this middleware and never
+// reach it. This closes server-rendered data views (e.g. /contacts/:id/statement) that the
+// old allowlist-by-prefix gate leaked to the open internet.
+const PUBLIC_STATIC_RE = /\.(html|js|mjs|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|eot|webmanifest)$/i;
 app.use((req, res, next) => {
   if (req._bypassAuth) return next();
-  const needsAuth = req.path.startsWith('/api/') || req.path.startsWith('/invoices/');
-  if (!needsAuth) return next();
-  if (req.path.startsWith('/api/auth/')) return next();
+  const p = req.path;
+  if (p === '/' || p.startsWith('/api/auth/') || PUBLIC_STATIC_RE.test(p)) return next();
   const sess = getSession(req);
   const token = !sess ? getApiToken(req) : null;
   if (!sess && !token) {
@@ -3407,7 +3432,7 @@ setInterval(() => {
 // System info
 // ==================================================================
 
-app.get('/api/system/backups', (req, res) => {
+app.get('/api/system/backups', requireAdmin, (req, res) => {
   const exists = fs.existsSync(BACKUP_DIR);
   const files = exists
     ? fs.readdirSync(BACKUP_DIR)
@@ -3794,7 +3819,7 @@ app.post('/api/invoices/:id/email', async (req, res) => {
 // Backup — stream tar.gz of the data dir
 // ==================================================================
 
-app.get('/api/backup', (req, res) => {
+app.get('/api/backup', requireAdmin, (req, res) => {
   const { spawn } = require('child_process');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const wantEncrypt = req.query.encrypt === '1';
@@ -3983,18 +4008,18 @@ function renderStatementHTML(s) {
   const today = new Date().toISOString().slice(0, 10);
   const rows = arr => arr.map(i => `
     <tr>
-      <td>${i.number}${i.external_number ? ' (' + i.external_number + ')' : ''}</td>
-      <td>${i.issue_date || ''}</td>
-      <td>${i.due_date || ''}</td>
-      <td>${i.entity_code}</td>
-      <td class="num">${i.currency} ${fmt(i.total)}</td>
-      <td class="num">${i.currency} ${fmt((i.total || 0) - (i.amount_paid || 0))}</td>
-      <td>${i.status}</td>
+      <td>${htmlEscape(i.number)}${i.external_number ? ' (' + htmlEscape(i.external_number) + ')' : ''}</td>
+      <td>${htmlEscape(i.issue_date || '')}</td>
+      <td>${htmlEscape(i.due_date || '')}</td>
+      <td>${htmlEscape(i.entity_code)}</td>
+      <td class="num">${htmlEscape(i.currency)} ${fmt(i.total)}</td>
+      <td class="num">${htmlEscape(i.currency)} ${fmt((i.total || 0) - (i.amount_paid || 0))}</td>
+      <td>${htmlEscape(i.status)}</td>
     </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:#999;padding:20px">— none —</td></tr>`;
   const balRows = (label, map) => Object.entries(map).length === 0 ? '' :
-    `<div class="bal-row"><span>${label}</span><span>${Object.entries(map).map(([c, v]) => `${c} ${fmt(v)}`).join(' · ')}</span></div>`;
+    `<div class="bal-row"><span>${label}</span><span>${Object.entries(map).map(([c, v]) => `${htmlEscape(c)} ${fmt(v)}`).join(' · ')}</span></div>`;
   return `<!doctype html><html><head><meta charset="utf-8">
-  <title>Statement — ${s.contact.display_name}</title>
+  <title>Statement — ${htmlEscape(s.contact.display_name)}</title>
   <style>
     @page { size: A4; margin: 18mm; }
     body { font: 12pt/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #111; max-width: 800px; margin: 0 auto; padding: 24px; }
@@ -4015,9 +4040,9 @@ function renderStatementHTML(s) {
   <div class="print-bar"><button onclick="window.print()">Print / Save as PDF</button></div>
   <header>
     <div>
-      <h1>${s.contact.display_name}</h1>
-      ${s.contact.legal_name ? `<div>${s.contact.legal_name}</div>` : ''}
-      ${s.contact.tax_id ? `<div>Tax ID: ${s.contact.tax_id}</div>` : ''}
+      <h1>${htmlEscape(s.contact.display_name)}</h1>
+      ${s.contact.legal_name ? `<div>${htmlEscape(s.contact.legal_name)}</div>` : ''}
+      ${s.contact.tax_id ? `<div>Tax ID: ${htmlEscape(s.contact.tax_id)}</div>` : ''}
     </div>
     <div style="text-align:right">
       <div style="font-size:14pt;font-weight:600">Statement</div>

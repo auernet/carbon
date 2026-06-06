@@ -10,7 +10,8 @@ const puppeteer = require('puppeteer-core');
 const PORT = process.env.SMOKE_PORT || 4099;
 const BASE = `http://127.0.0.1:${PORT}`;
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const ADMIN = { email: 'ben@aa.ag', password: 'nobfa3-cobjip-zIjpob' };
+// Local-dev default; CI / prod-like runs can override via env so the literal isn't load-bearing.
+const ADMIN = { email: process.env.CARBON_ADMIN_EMAIL || 'ben@aa.ag', password: process.env.CARBON_ADMIN_PASSWORD || 'nobfa3-cobjip-zIjpob' };
 const ROOT = path.resolve(__dirname, '..');
 
 let server, browser;

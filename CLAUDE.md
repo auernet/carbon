@@ -16,6 +16,9 @@ SQLite (better-sqlite3)**, no build step. Single backend file `server.js`; the f
 ## Local dev
 - Run: `node server.js` (or Preview MCP server **`carbon`**) → http://127.0.0.1:**4040**.
 - Login (bootstrap admin, do NOT change): `ben@aa.ag` / `nobfa3-cobjip-zIjpob`.
+  **This is the LOCAL-DEV-ONLY default.** Production must set `BOOTSTRAP_ADMIN_EMAIL` +
+  `BOOTSTRAP_ADMIN_PASSWORD` env (Coolify) to a strong password that is NOT in this repo, so a
+  repo leak can't compromise the live site. (Server re-applies the env admin idempotently on boot.)
 - Theme is stored in `localStorage` key `carbon.theme` (`dark` | `light`). Ben uses dark.
 - The live DB, bootstrap admin, and encryption key live in `data/` (gitignored). Never
   move or rename anything under `data/`.

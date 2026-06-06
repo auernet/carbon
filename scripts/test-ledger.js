@@ -9,7 +9,8 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 const ROOT = path.resolve(__dirname, '..');
 const PORT = process.env.LEDGER_TEST_PORT || 4097;
 const BASE = `http://127.0.0.1:${PORT}`;
-const ADMIN = { email: 'ben@aa.ag', password: 'nobfa3-cobjip-zIjpob' };
+// Local-dev default; CI / prod-like runs can override via env so the literal isn't load-bearing.
+const ADMIN = { email: process.env.CARBON_ADMIN_EMAIL || 'ben@aa.ag', password: process.env.CARBON_ADMIN_PASSWORD || 'nobfa3-cobjip-zIjpob' };
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-ledger-'));
 fs.cpSync(path.join(ROOT, 'data'), path.join(tmp, 'data'), { recursive: true });
