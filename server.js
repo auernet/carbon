@@ -1398,6 +1398,11 @@ function checkPeriodLock(entityId, issueDate) {
   }
   return null;
 }
+// A money flow can touch two entities; it's locked if EITHER side's period is closed through flow_date.
+function checkFlowLock(f) {
+  if (!f) return null;
+  return checkPeriodLock(f.from_entity_id, f.flow_date) || checkPeriodLock(f.to_entity_id, f.flow_date);
+}
 
 app.post('/api/invoices', (req, res) => {
   const body = req.body || {};
@@ -1598,6 +1603,8 @@ app.delete('/api/invoices/:id', (req, res) => {
   const id = Number(req.params.id);
   const before = loadInvoice(id);
   if (!before) return res.status(404).json({ error: 'not found' });
+  const lockErr = checkPeriodLock(before.entity_id, before.issue_date);
+  if (lockErr) return res.status(409).json({ error: lockErr });
   if (req.query.hard === '1') {
     if (blockIfReferenced('invoices', id, res)) return;
     db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
@@ -2423,6 +2430,8 @@ app.post('/api/flows', (req, res) => {
   let data;
   try { data = normaliseFlow(req.body || {}); }
   catch (e) { return res.status(400).json({ error: e.message }); }
+  const lockErr = checkFlowLock(data);
+  if (lockErr) return res.status(409).json({ error: lockErr });
   const cols = FLOW_COLS.join(', ');
   const placeholders = FLOW_COLS.map(c => '@' + c).join(', ');
   const result = db.prepare(`INSERT INTO money_flows (${cols}) VALUES (${placeholders})`).run(data);
@@ -2440,6 +2449,8 @@ app.put('/api/flows/:id', (req, res) => {
   let data;
   try { data = normaliseFlow({ ...before, ...req.body }); }
   catch (e) { return res.status(400).json({ error: e.message }); }
+  const lockErr = checkFlowLock(before) || checkFlowLock(data); // can't edit out of, or into, a locked period
+  if (lockErr) return res.status(409).json({ error: lockErr });
   const setClause = FLOW_COLS.map(c => `${c} = @${c}`).join(', ');
   db.prepare(`UPDATE money_flows SET ${setClause} WHERE id = @id`).run({ ...data, id });
   const after = loadFlow(id);
@@ -2452,6 +2463,8 @@ app.delete('/api/flows/:id', (req, res) => {
   const id = Number(req.params.id);
   const before = loadFlow(id);
   if (!before) return res.status(404).json({ error: 'not found' });
+  const lockErr = checkFlowLock(before);
+  if (lockErr) return res.status(409).json({ error: lockErr });
   db.prepare('DELETE FROM money_flows WHERE id = ?').run(id);
   audit('money_flows', id, 'delete', before, null);
   postMoneyFlow(id);
@@ -3042,6 +3055,8 @@ app.post('/api/ledger/journal', (req, res) => {
   if (!ent) return res.status(400).json({ error: 'unknown entity' });
   const eventDate = b.event_date || new Date().toISOString().slice(0, 10);
   if (!isValidDate(eventDate)) return res.status(400).json({ error: 'event_date must be YYYY-MM-DD' });
+  const lockErr = checkPeriodLock(entityId, eventDate);
+  if (lockErr) return res.status(409).json({ error: lockErr });
   const lines = Array.isArray(b.lines) ? b.lines : [];
   if (lines.length < 2) return res.status(400).json({ error: 'at least two lines required' });
   let debit = 0, credit = 0; const clean = [];
@@ -3067,8 +3082,10 @@ app.post('/api/ledger/journal', (req, res) => {
 app.delete('/api/ledger/journal/:txnId', (req, res) => {
   const txnId = String(req.params.txnId);
   if (!txnId.startsWith('man-')) return res.status(400).json({ error: 'only manual journal entries can be deleted here' });
-  const before = db.prepare("SELECT id FROM ledger_entries WHERE txn_id = ? AND source_table='manual'").all(txnId);
+  const before = db.prepare("SELECT id, entity_id, event_date FROM ledger_entries WHERE txn_id = ? AND source_table='manual'").all(txnId);
   if (!before.length) return res.status(404).json({ error: 'not found' });
+  const lockErr = checkPeriodLock(before[0].entity_id, before[0].event_date);
+  if (lockErr) return res.status(409).json({ error: lockErr });
   db.prepare("DELETE FROM ledger_entries WHERE txn_id = ? AND source_table='manual'").run(txnId);
   audit('ledger_entries', null, 'journal-delete', { txn_id: txnId, lines: before.length }, null);
   res.json({ ok: true });

@@ -272,6 +272,18 @@ async function waitUp() { for (let i = 0; i < 80; i++) { try { const r = await f
   if (dd(cf1.total.net_change - cf0.total.net_change) !== 210) die(`cashflow net_change delta != 210`);
   ok('cash flow: bank in/out movement and net change reconcile (in 321, out 111, net 210)');
 
+  // 27) Period lock blocks postings into a closed period (flows + journal), not after it
+  await api('PUT', '/api/entities/1', { period_lock_through: '2020-12-31' });
+  let flowLocked = false;
+  try { await api('POST', '/api/flows', { flow_date: '2020-06-01', amount: 50, currency: 'HKD', kind: 'income', to_entity_id: 1, from_contact_id: 2 }); } catch (e) { flowLocked = /locked/.test(e.message); }
+  if (!flowLocked) die('flow into a locked period was not blocked');
+  let jrnlLocked = false;
+  try { await api('POST', '/api/ledger/journal', { entity_id: 1, event_date: '2020-06-01', description: 'locked', lines: [{ account_code: '1000', direction: 'debit', amount: 10 }, { account_code: '3000', direction: 'credit', amount: 10 }] }); } catch (e) { jrnlLocked = /locked/.test(e.message); }
+  if (!jrnlLocked) die('journal into a locked period was not blocked');
+  await api('POST', '/api/flows', { flow_date: TODAY, amount: 50, currency: 'HKD', kind: 'income', to_entity_id: 1, from_contact_id: 2 }); // after the lock → allowed
+  await api('PUT', '/api/entities/1', { period_lock_through: '' }); // unlock (empty clears it)
+  ok('period lock blocks flows + journal entries dated in a closed period (allows later dates)');
+
   console.log(`\n✅ LEDGER TEST OK — ${passed} checks passed, trial balance held at every step.`);
   cleanup();
   process.exit(0);
