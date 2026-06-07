@@ -338,6 +338,8 @@
         <button id="btn-bulk-import" title="Bulk import invoices from CSV">Import CSV</button>
         <input id="bulk-import-file" type="file" accept=".csv,text/csv" hidden />
         <button id="btn-new-bill">+ New bill</button>
+        <button id="btn-bulk-bills" title="Pick several supplier files → a draft bill each to file one by one">+ Bulk bills</button>
+        <input id="bulk-bills-file" type="file" multiple hidden />
         <button id="btn-new-invoice" class="primary">+ New invoice</button>
       </div>
       <div id="invoices-bulk-bar" class="bulk-bar" hidden>
@@ -345,6 +347,7 @@
         <button id="bulk-email">Email selected</button>
         <button id="bulk-void" class="danger">Void selected</button>
       </div>
+      <div id="bulk-bills-tray" class="bulk-bar" hidden></div>
       <table id="invoices-table">
         <thead>
           <tr>

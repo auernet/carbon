@@ -1466,6 +1466,38 @@ const invForm = document.getElementById('invoice-form');
 
 document.getElementById('btn-new-invoice').addEventListener('click', () => openInvoiceDialog(null, 'sales'));
 document.getElementById('btn-new-bill').addEventListener('click', () => openInvoiceDialog(null, 'purchase'));
+// Bulk bills: queue several supplier files → file each as a draft bill (with its file pre-attached).
+state.invBulkQueue = [];
+document.getElementById('btn-bulk-bills').addEventListener('click', () => document.getElementById('bulk-bills-file').click());
+document.getElementById('bulk-bills-file').addEventListener('change', (e) => { addBulkBills(e.target.files); e.target.value = ''; });
+function addBulkBills(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  state.invBulkQueue.push(...files);
+  renderBulkQueue();
+  toast(`${files.length} file(s) queued — open each to file it as a bill`, 'ok');
+}
+function renderBulkQueue() {
+  const tray = document.getElementById('bulk-bills-tray');
+  if (!tray) return;
+  const q = state.invBulkQueue || [];
+  tray.hidden = q.length === 0;
+  if (!q.length) { tray.innerHTML = ''; return; }
+  tray.innerHTML = `<span class="muted">${q.length} bill(s) to file:</span> ` +
+    q.map((f, i) => `<button type="button" data-idx="${i}" class="bulkq-open">📄 ${escapeHtml(f.name)}</button>`).join(' ') +
+    ` <button type="button" id="bulkq-clear" class="danger">Clear</button>`;
+  tray.querySelectorAll('.bulkq-open').forEach(btn => btn.addEventListener('click', () => processBulkBill(Number(btn.dataset.idx))));
+  document.getElementById('bulkq-clear').addEventListener('click', () => { state.invBulkQueue = []; renderBulkQueue(); });
+}
+async function processBulkBill(idx) {
+  const f = state.invBulkQueue[idx];
+  if (!f) return;
+  state.invBulkQueue.splice(idx, 1);
+  renderBulkQueue();
+  await openInvoiceDialog(null, 'purchase');
+  state.invPendingAttachments = [f];
+  renderInvoiceAttachments();
+}
 document.getElementById('invoice-filter-direction').addEventListener('change', async (e) => {
   state.invFilterDirection = e.target.value;
   await loadInvoices();
