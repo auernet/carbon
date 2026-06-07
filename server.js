@@ -391,6 +391,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_payments_invoice ON invoice_payments(invoice_id);
 
+  CREATE TABLE IF NOT EXISTS invoice_attachments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    file_path   TEXT NOT NULL,
+    file_name   TEXT NOT NULL,
+    file_mime   TEXT,
+    file_size   INTEGER,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_inv_attach ON invoice_attachments(invoice_id);
+
   CREATE TABLE IF NOT EXISTS notes (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_table  TEXT NOT NULL,
@@ -575,6 +586,7 @@ db.exec(`
   DELETE FROM contact_entity_links  WHERE contact_id   NOT IN (SELECT id FROM contacts);
   DELETE FROM contact_entity_links  WHERE entity_id    NOT IN (SELECT id FROM entities);
   DELETE FROM invoice_lines         WHERE invoice_id   NOT IN (SELECT id FROM invoices);
+  DELETE FROM invoice_attachments   WHERE invoice_id   NOT IN (SELECT id FROM invoices);
   DELETE FROM kyc_documents         WHERE kyc_record_id NOT IN (SELECT id FROM kyc_records);
   DELETE FROM contract_file_versions WHERE contract_id NOT IN (SELECT id FROM contracts);
   DELETE FROM bank_transactions     WHERE account_id   NOT IN (SELECT id FROM bank_accounts);
@@ -3718,6 +3730,86 @@ app.delete('/api/invoices/payments/:pid', (req, res) => {
   postInvoiceFull(before.invoice_id);
   audit('invoice_payments', pid, 'delete', before, null);
   res.json({ ok: true });
+});
+
+// --- Bill / invoice attachments (the supplier's original PDF/photo lives with the bill) ---
+app.post('/api/invoices/:id/attachments', uploadBodyMb, (req, res) => {
+  const id = Number(req.params.id);
+  const inv = db.prepare('SELECT id FROM invoices WHERE id = ?').get(id);
+  if (!inv) return res.status(404).json({ error: 'not found' });
+  const filename = req.headers['x-filename'] || 'file.bin';
+  const mime = req.headers['content-type'] || 'application/octet-stream';
+  if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty body' });
+  const meta = saveAttachment('invoices', id, filename, mime, req.body);
+  const result = db.prepare(
+    `INSERT INTO invoice_attachments (invoice_id, file_path, file_name, file_mime, file_size)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(id, meta.rel_path, meta.name, meta.mime, meta.size);
+  audit('invoice_attachments', result.lastInsertRowid, 'insert', null, { invoice_id: id, file_name: meta.name, file_size: meta.size });
+  res.json(db.prepare('SELECT id, file_name, file_mime, file_size, uploaded_at FROM invoice_attachments WHERE invoice_id = ? ORDER BY uploaded_at DESC').all(id));
+});
+
+app.get('/api/invoices/:id/attachments', (req, res) => {
+  res.json(db.prepare('SELECT id, file_name, file_mime, file_size, uploaded_at FROM invoice_attachments WHERE invoice_id = ? ORDER BY uploaded_at DESC').all(Number(req.params.id)));
+});
+
+app.get('/api/invoices/attachments/:attId', (req, res) => {
+  const a = db.prepare('SELECT * FROM invoice_attachments WHERE id = ?').get(Number(req.params.attId));
+  if (!a) return res.status(404).json({ error: 'not found' });
+  const buf = readAttachment(a.file_path);
+  if (!buf) return res.status(404).json({ error: 'file missing on disk' });
+  const inlineOk = SAFE_INLINE_MIME.has((a.file_mime || '').toLowerCase());
+  res.set('Content-Type', inlineOk ? a.file_mime : 'application/octet-stream');
+  res.set('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${a.file_name}"`);
+  res.send(buf);
+});
+
+app.delete('/api/invoices/attachments/:attId', (req, res) => {
+  const a = db.prepare('SELECT * FROM invoice_attachments WHERE id = ?').get(Number(req.params.attId));
+  if (!a) return res.status(404).json({ error: 'not found' });
+  db.prepare('DELETE FROM invoice_attachments WHERE id = ?').run(a.id);
+  try { fs.unlinkSync(path.join(DATA_DIR, a.file_path)); } catch (_) {}
+  audit('invoice_attachments', a.id, 'delete', a, null);
+  res.json({ ok: true });
+});
+
+// Vendor-first prefill: a supplier's last-bill defaults (currency, payment term, tax rate).
+app.get('/api/contacts/:id/bill-defaults', (req, res) => {
+  const cid = Number(req.params.id);
+  const last = db.prepare(`
+    SELECT currency, fx_rate_to_base, issue_date, due_date FROM invoices
+     WHERE contact_id = ? AND direction = 'purchase' AND status != 'void'
+     ORDER BY issue_date DESC, id DESC LIMIT 1`).get(cid);
+  if (!last) return res.json({});
+  let termDays = null;
+  if (last.issue_date && last.due_date) {
+    const d = (new Date(last.due_date) - new Date(last.issue_date)) / 86400000;
+    if (d >= 0 && d < 400) termDays = Math.round(d);
+  }
+  const taxRow = db.prepare(`
+    SELECT l.tax_rate FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+     WHERE i.contact_id = ? AND i.direction = 'purchase' AND i.status != 'void'
+     ORDER BY i.issue_date DESC, l.id DESC LIMIT 1`).get(cid);
+  res.json({
+    currency: last.currency || null,
+    fx_rate_to_base: last.fx_rate_to_base || null,
+    term_days: termDays,
+    tax_rate: taxRow ? taxRow.tax_rate : null,
+  });
+});
+
+// Duplicate-bill guard (warn-only): same vendor + supplier number on a live bill.
+app.get('/api/bills/check-duplicate', (req, res) => {
+  const contactId = Number(req.query.contact_id);
+  const ext = String(req.query.external_number || '').trim();
+  const excludeId = Number(req.query.exclude_id) || 0;
+  if (!contactId || !ext) return res.json({ duplicate: false });
+  const row = db.prepare(`
+    SELECT id, number, total, currency FROM invoices
+     WHERE contact_id = ? AND direction = 'purchase' AND status != 'void'
+       AND external_number = ? AND id != ?
+     ORDER BY id DESC LIMIT 1`).get(contactId, ext, excludeId);
+  res.json(row ? { duplicate: true, id: row.id, number: row.number, total: row.total, currency: row.currency } : { duplicate: false });
 });
 
 // Recurring invoice ticker — daily check.

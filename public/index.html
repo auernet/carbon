@@ -1024,6 +1024,16 @@
         <p class="muted" style="font-size:11px">When active, a new draft invoice is auto-generated on the next-run date.</p>
       </fieldset>
 
+      <fieldset id="invoice-attachments-section">
+        <legend>Attached files <span class="muted" style="font-size:11px">— the supplier's invoice, receipts…</span></legend>
+        <div id="invoice-attachments-list" class="muted">No files attached.</div>
+        <div id="invoice-attach-drop" class="kyc-upload" style="margin-top:8px; border:1px dashed var(--border); border-radius:var(--radius-sm); padding:10px; justify-content:center; gap:8px">
+          <input id="invoice-attach-input" type="file" multiple hidden />
+          <button type="button" id="invoice-attach-btn">Choose files</button>
+          <span class="muted">or drag &amp; drop here</span>
+        </div>
+      </fieldset>
+
       <fieldset id="invoice-payments-section" hidden>
         <legend>Payments <span id="inv-pay-summary" class="muted"></span></legend>
         <div id="inv-payments-list"></div>

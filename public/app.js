@@ -56,6 +56,11 @@ const api = {
   createInvoice: (body) => jsonReq('POST', '/api/invoices', body),
   updateInvoice: (id, body) => jsonReq('PUT', '/api/invoices/' + id, body),
   voidInvoice:   (id) => jsonReq('DELETE', '/api/invoices/' + id),
+  invoiceAttachments:      (id) => fetch('/api/invoices/' + id + '/attachments').then(r => r.json()),
+  uploadInvoiceAttachment: (id, file) => fileReq('/api/invoices/' + id + '/attachments', file),
+  deleteInvoiceAttachment: (attId) => jsonReq('DELETE', '/api/invoices/attachments/' + attId),
+  billDefaults:            (contactId) => fetch('/api/contacts/' + contactId + '/bill-defaults').then(r => r.json()),
+  checkBillDuplicate:      (contactId, ext, excludeId) => fetch('/api/bills/check-duplicate?contact_id=' + contactId + '&external_number=' + encodeURIComponent(ext) + '&exclude_id=' + (excludeId || 0)).then(r => r.json()),
 
   contracts:        () => fetch('/api/contracts').then(r => r.json()),
   contract:         (id) => fetch('/api/contracts/' + id).then(r => r.json()),
@@ -1470,6 +1475,32 @@ document.getElementById('inv-direction').addEventListener('change', (e) => {
 });
 document.getElementById('invoice-cancel').addEventListener('click', () => invDlg.close());
 document.getElementById('invoice-save').addEventListener('click', guardSave('invoice-save', saveInvoice));
+// Bill attachments: choose / drag-drop files onto the bill.
+document.getElementById('invoice-attach-btn').addEventListener('click', () => document.getElementById('invoice-attach-input').click());
+document.getElementById('invoice-attach-input').addEventListener('change', (e) => { addInvoiceFiles(e.target.files); e.target.value = ''; });
+(() => {
+  const drop = document.getElementById('invoice-attach-drop');
+  if (!drop) return;
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.style.borderColor = 'var(--accent)'; });
+  drop.addEventListener('dragleave', () => { drop.style.borderColor = 'var(--border)'; });
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.style.borderColor = 'var(--border)'; addInvoiceFiles(e.dataTransfer.files); });
+})();
+// Vendor-first prefill: picking a supplier on a NEW bill fills currency / FX / due date from their last bill.
+document.getElementById('inv-contact').addEventListener('change', async (e) => {
+  if (state.invEditingId || state.invEditingDirection !== 'purchase') return;
+  const cid = Number(e.target.value);
+  if (!cid) return;
+  try {
+    const d = await api.billDefaults(cid);
+    if (!d) return;
+    if (d.currency && !invForm.elements['currency'].value) invForm.elements['currency'].value = d.currency;
+    if (d.fx_rate_to_base && (!invForm.elements['fx_rate_to_base'].value || invForm.elements['fx_rate_to_base'].value === '1')) invForm.elements['fx_rate_to_base'].value = d.fx_rate_to_base;
+    if (d.term_days != null && !invForm.elements['due_date'].value && invForm.elements['issue_date'].value) {
+      const due = new Date(invForm.elements['issue_date'].value); due.setDate(due.getDate() + d.term_days);
+      invForm.elements['due_date'].value = due.toISOString().slice(0, 10);
+    }
+  } catch (_) {}
+});
 document.getElementById('invoice-print').addEventListener('click', () => {
   if (state.invEditingId) {
     window.open('/invoices/' + state.invEditingId + '/print', '_blank');
@@ -1954,6 +1985,53 @@ function applyInvoiceDirectionUI(direction) {
     pool.map(c => `<option value="${c.id}">${escapeHtml(c.display_name)} (${c.contact_type})</option>`).join('');
 }
 
+// --- Bill / invoice attachments (the supplier's original file lives with the bill) ---
+async function loadInvoiceAttachments(id) {
+  state.invAttachments = id ? await api.invoiceAttachments(id).catch(() => []) : [];
+  renderInvoiceAttachments();
+}
+function renderInvoiceAttachments() {
+  const el = document.getElementById('invoice-attachments-list');
+  if (!el) return;
+  const saved = state.invAttachments || [];
+  const pending = state.invPendingAttachments || [];
+  if (!saved.length && !pending.length) { el.innerHTML = '<div class="muted">No files attached.</div>'; return; }
+  el.innerHTML = '<ul class="doc-list">' +
+    saved.map(a => `<li data-id="${a.id}">
+      <a href="/api/invoices/attachments/${a.id}" target="_blank">${escapeHtml(a.file_name)}</a>
+      <span class="muted">${((a.file_size || 0) / 1024).toFixed(1)} KB</span>
+      <button type="button" class="danger" data-act="rm-att">×</button></li>`).join('') +
+    pending.map((f, i) => `<li data-idx="${i}">
+      <span>${escapeHtml(f.name)}</span>
+      <span class="muted">pending · ${((f.size || 0) / 1024).toFixed(1)} KB</span>
+      <button type="button" class="danger" data-act="rm-pending">×</button></li>`).join('') + '</ul>';
+  el.querySelectorAll('button[data-act="rm-att"]').forEach(btn => btn.addEventListener('click', async (e) => {
+    const attId = Number(e.target.closest('li').dataset.id);
+    if (!await uiConfirm('Remove this file?')) return;
+    try { await api.deleteInvoiceAttachment(attId); state.invAttachments = (state.invAttachments || []).filter(a => a.id !== attId); renderInvoiceAttachments(); }
+    catch (err) { toast('Remove failed: ' + err.message, 'error'); }
+  }));
+  el.querySelectorAll('button[data-act="rm-pending"]').forEach(btn => btn.addEventListener('click', (e) => {
+    state.invPendingAttachments.splice(Number(e.target.closest('li').dataset.idx), 1); renderInvoiceAttachments();
+  }));
+}
+async function addInvoiceFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (state.invEditingId) {
+    try {
+      let latest;
+      for (const f of files) latest = await api.uploadInvoiceAttachment(state.invEditingId, f);
+      if (latest) state.invAttachments = latest;
+      renderInvoiceAttachments();
+      toast(`Attached ${files.length} file(s)`, 'ok');
+    } catch (err) { toast('Upload failed: ' + err.message, 'error'); }
+  } else {
+    (state.invPendingAttachments = state.invPendingAttachments || []).push(...files);
+    renderInvoiceAttachments();
+  }
+}
+
 const DRAFT_KEY = 'carbon.invoice-draft';
 function saveInvoiceDraft() {
   if (state.invEditingId) return; // only autosave for new invoices
@@ -2004,6 +2082,8 @@ async function openInvoiceDialog(id, defaultDirection) {
     id ? 'Edit ' + (state.invEditingDirection === 'purchase' ? 'bill' : 'invoice')
        : 'New ' + (state.invEditingDirection === 'purchase' ? 'bill' : 'invoice');
   document.getElementById('invoice-print').hidden = !id;
+  state.invPendingAttachments = [];
+  loadInvoiceAttachments(id);
 
   if (id) {
     const inv = await api.invoice(id);
@@ -2213,11 +2293,25 @@ async function saveInvoice() {
   if (!data.entity_id)  { toast('Entity required', 'warn'); return; }
   if (!data.contact_id) { toast('Customer required', 'warn'); return; }
   if (!data.currency)   { toast('Currency required', 'warn'); return; }
+  // Duplicate-bill guard (warn-only): same supplier + supplier number on a live bill.
+  if (data.direction === 'purchase' && data.external_number && data.contact_id) {
+    try {
+      const dup = await api.checkBillDuplicate(data.contact_id, data.external_number, state.invEditingId || 0);
+      if (dup && dup.duplicate) {
+        const ok = await uiConfirm(`Looks like a duplicate of bill ${dup.number || '#' + dup.id} (${dup.currency || ''} ${fmtMoney(dup.total || 0)}). Save anyway?`);
+        if (!ok) return;
+      }
+    } catch (_) { /* non-blocking */ }
+  }
   try {
     if (state.invEditingId) {
       await api.updateInvoice(state.invEditingId, data);
     } else {
-      await api.createInvoice(data);
+      const created = await api.createInvoice(data);
+      if (created && created.id && (state.invPendingAttachments || []).length) {
+        for (const f of state.invPendingAttachments) { try { await api.uploadInvoiceAttachment(created.id, f); } catch (_) {} }
+      }
+      state.invPendingAttachments = [];
       clearInvoiceDraft();
     }
     invDlg.close();
