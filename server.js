@@ -4096,15 +4096,125 @@ app.delete('/api/fx-rates/:currency', requireAdmin, (req, res) => {
 });
 
 app.get('/api/settings/:key', (req, res) => {
+  if (req.params.key.startsWith('ai_')) return res.status(404).json({ error: 'not found' }); // secrets: use /api/ai/config
   const v = getSetting(req.params.key, null);
   res.json({ key: req.params.key, value: v });
 });
 
 app.put('/api/settings/:key', requireAdmin, (req, res) => {
+  if (req.params.key.startsWith('ai_')) return res.status(403).json({ error: 'use /api/ai/config' });
   const { value } = req.body || {};
   setSetting(req.params.key, value);
   audit('app_settings', null, 'update', null, { key: req.params.key, value });
   res.json({ key: req.params.key, value });
+});
+
+// ==================================================================
+// AI document reading (bill field extraction) — engine + keys + extract
+// ==================================================================
+const AI_ENGINES = new Set(['subscription', 'anthropic', 'openai']);
+
+app.get('/api/ai/config', requireAdmin, (req, res) => {
+  res.json({
+    engine: getSetting('ai_engine', 'subscription'),
+    model: getSetting('ai_model', 'claude-haiku-4-5'),
+    anthropic_key_set: !!getSetting('ai_anthropic_key', ''),
+    openai_key_set: !!getSetting('ai_openai_key', ''),
+  });
+});
+
+app.put('/api/ai/config', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  if (b.engine && AI_ENGINES.has(b.engine)) setSetting('ai_engine', b.engine);
+  if (typeof b.model === 'string' && b.model.trim()) setSetting('ai_model', b.model.trim());
+  // Keys are encrypted at rest; only updated when a value is sent. Empty string clears.
+  if (b.anthropic_key !== undefined) setSetting('ai_anthropic_key', b.anthropic_key ? encField(b.anthropic_key) : '');
+  if (b.openai_key !== undefined) setSetting('ai_openai_key', b.openai_key ? encField(b.openai_key) : '');
+  audit('app_settings', null, 'update', null, { key: 'ai_config', engine: b.engine, model: b.model });
+  res.json({ ok: true });
+});
+
+const aiErr = (status, message) => Object.assign(new Error(message), { status });
+function parseExtractJson(text) {
+  let s = String(text || '').trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  const a = s.indexOf('{'), z = s.lastIndexOf('}');
+  if (a >= 0 && z > a) s = s.slice(a, z + 1);
+  let o; try { o = JSON.parse(s); } catch (_) { throw aiErr(502, 'Could not read the bill (unexpected response).'); }
+  const num = v => { const n = Number(v); return Number.isFinite(n) ? round2(n) : null; };
+  return {
+    vendor_name: o.vendor_name || null,
+    external_number: o.external_number || null,
+    issue_date: o.issue_date || null,
+    due_date: o.due_date || null,
+    currency: o.currency ? String(o.currency).toUpperCase().slice(0, 3) : null,
+    subtotal: num(o.subtotal),
+    tax_total: num(o.tax_total),
+    total: num(o.total),
+  };
+}
+
+async function aiExtractBill(buffer, mime, cfg) {
+  if (buffer.length > 10 * 1024 * 1024) throw aiErr(400, 'File is too large to read (max ~10MB).');
+  const m = (mime || '').toLowerCase();
+  const isPdf = m.includes('pdf');
+  const isImg = m.startsWith('image/');
+  if (!isPdf && !isImg) throw aiErr(400, 'Reading works on PDF or image files only.');
+  const PROMPT = 'You are reading a supplier bill/invoice. Return ONLY a JSON object with keys: '
+    + 'vendor_name, external_number (the supplier\'s own invoice number), issue_date (YYYY-MM-DD), '
+    + 'due_date (YYYY-MM-DD or null), currency (3-letter ISO), subtotal (number), tax_total (number), '
+    + 'total (number). Use null when a field is absent. Numbers must have no currency symbols or thousands separators.';
+
+  if (cfg.engine === 'anthropic') {
+    if (!cfg.anthropicKey) throw aiErr(400, 'Add an Anthropic key in Settings → AI document reading.');
+    const data = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } }
+      : { type: 'image', source: { type: 'base64', media_type: m, data: buffer.toString('base64') } };
+    let r;
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': cfg.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: cfg.model || 'claude-haiku-4-5',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: [data, { type: 'text', text: PROMPT }] }],
+        }),
+      });
+    } catch (e) { throw aiErr(502, 'Could not reach the AI service.'); }
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw aiErr(400, 'AI read failed: ' + ((body && body.error && body.error.message) || ('HTTP ' + r.status)));
+    const text = (body.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    return parseExtractJson(text);
+  }
+  if (cfg.engine === 'openai') {
+    throw aiErr(400, 'OpenAI reading isn\'t wired yet — switch the engine to Anthropic in Settings (your OpenAI key is saved for later).');
+  }
+  throw aiErr(400, 'Subscription mode reads bills through Claude Code locally — add an Anthropic key in Settings to read bills on the live site.');
+}
+
+app.post('/api/invoices/:id/extract', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const attId = Number(req.query.attachment_id) || 0;
+    const a = attId
+      ? db.prepare('SELECT * FROM invoice_attachments WHERE id = ? AND invoice_id = ?').get(attId, id)
+      : db.prepare('SELECT * FROM invoice_attachments WHERE invoice_id = ? ORDER BY id DESC LIMIT 1').get(id);
+    if (!a) return res.status(400).json({ error: 'Attach the bill file first, then read it.' });
+    const buf = readAttachment(a.file_path);
+    if (!buf) return res.status(404).json({ error: 'file missing on disk' });
+    const fields = await aiExtractBill(buf, a.file_mime, {
+      engine: getSetting('ai_engine', 'subscription'),
+      model: getSetting('ai_model', 'claude-haiku-4-5'),
+      anthropicKey: decField(getSetting('ai_anthropic_key', '')) || '',
+      openaiKey: decField(getSetting('ai_openai_key', '')) || '',
+    });
+    audit('invoices', id, 'ai_extract', null, { attachment: a.file_name });
+    res.json(fields);
+  } catch (e) {
+    res.status(e.status || 400).json({ error: e.message || 'extraction failed' });
+  }
 });
 
 // Counterparty statement: open + paid-last-12mo + per-currency outstanding

@@ -591,6 +591,7 @@
         <button class="subtab active" data-sub="general">General</button>
         <button class="subtab" data-sub="users">Users</button>
         <button class="subtab" data-sub="currencies">Currencies</button>
+        <button class="subtab" data-sub="ai">AI reading</button>
         <button class="subtab" data-sub="credentials">API Vault</button>
         <button class="subtab" data-sub="sync">Sync History</button>
         <button class="subtab" data-sub="ops">Backup &amp; System</button>
@@ -625,6 +626,35 @@
           </thead>
           <tbody></tbody>
         </table>
+      </div>
+
+      <!-- AI DOCUMENT READING -->
+      <div class="subpanel" data-sub="ai" hidden>
+        <div class="toolbar">
+          <strong>AI document reading</strong>
+          <span class="muted">— read a supplier bill's fields straight from its PDF or photo.</span>
+        </div>
+        <form id="ai-config-form" class="dash-card" style="max-width:580px; padding:16px; display:flex; flex-direction:column; gap:12px">
+          <label>Engine
+            <select name="engine" id="ai-engine">
+              <option value="subscription">Claude (subscription) — free, local only (not on the live site)</option>
+              <option value="anthropic">Anthropic key — reads bills on the live site</option>
+              <option value="openai">OpenAI (GPT) key — saved, not wired yet</option>
+            </select>
+          </label>
+          <p class="muted" style="font-size:11px; margin:0">Subscription mode only reads bills when you process them through Claude locally. To read bills on carbon.aa.ag, choose Anthropic and add a key.</p>
+          <label>Anthropic API key <span id="ai-anthropic-status" class="muted" style="font-size:11px"></span>
+            <input name="anthropic_key" type="password" autocomplete="off" placeholder="sk-ant-…  (blank = keep current)" />
+          </label>
+          <label>OpenAI API key <span id="ai-openai-status" class="muted" style="font-size:11px"></span>
+            <input name="openai_key" type="password" autocomplete="off" placeholder="sk-…  (blank = keep current)" />
+          </label>
+          <label>Model
+            <input name="model" placeholder="claude-haiku-4-5" />
+            <span class="muted" style="font-size:11px">Cheap & fast default. Use claude-opus-4-8 for tricky scans.</span>
+          </label>
+          <div class="actions"><button type="button" id="ai-config-save" class="primary">Save</button></div>
+        </form>
       </div>
 
       <!-- CURRENCIES -->
@@ -1035,6 +1065,7 @@
           <button type="button" id="invoice-attach-btn">Choose files</button>
           <span class="muted">or drag &amp; drop here</span>
         </div>
+        <button type="button" id="invoice-read-file" class="primary" style="margin-top:8px" hidden>✨ Read &amp; fill from file</button>
       </fieldset>
 
       <fieldset id="invoice-payments-section" hidden>

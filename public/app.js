@@ -61,6 +61,9 @@ const api = {
   deleteInvoiceAttachment: (attId) => jsonReq('DELETE', '/api/invoices/attachments/' + attId),
   billDefaults:            (contactId) => fetch('/api/contacts/' + contactId + '/bill-defaults').then(r => r.json()),
   checkBillDuplicate:      (contactId, ext, excludeId) => fetch('/api/bills/check-duplicate?contact_id=' + contactId + '&external_number=' + encodeURIComponent(ext) + '&exclude_id=' + (excludeId || 0)).then(r => r.json()),
+  aiConfig:      () => fetch('/api/ai/config').then(r => r.json()),
+  saveAiConfig:  (body) => jsonReq('PUT', '/api/ai/config', body),
+  extractBill:   (id, attId) => jsonReq('POST', '/api/invoices/' + id + '/extract' + (attId ? '?attachment_id=' + attId : '')),
 
   contracts:        () => fetch('/api/contracts').then(r => r.json()),
   contract:         (id) => fetch('/api/contracts/' + id).then(r => r.json()),
@@ -1533,6 +1536,37 @@ document.getElementById('inv-contact').addEventListener('change', async (e) => {
     }
   } catch (_) {}
 });
+// "Read & fill from file" — extract the bill's fields from its attachment into the form for review.
+document.getElementById('invoice-read-file')?.addEventListener('click', async () => {
+  if (!state.invEditingId) return;
+  const btn = document.getElementById('invoice-read-file');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Reading…';
+  try {
+    applyExtractedBill(await api.extractBill(state.invEditingId));
+    toast('Filled from the file — check the numbers before saving.', 'ok');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = orig; }
+});
+function applyExtractedBill(f) {
+  if (!f) return;
+  if (f.external_number) invForm.elements['external_number'].value = f.external_number;
+  if (f.currency)        invForm.elements['currency'].value = f.currency;
+  if (f.issue_date)      invForm.elements['issue_date'].value = f.issue_date;
+  if (f.due_date)        invForm.elements['due_date'].value = f.due_date;
+  if (f.vendor_name) {
+    const sel = document.getElementById('inv-contact');
+    const needle = String(f.vendor_name).toLowerCase().slice(0, 12);
+    const opt = Array.from(sel.options).find(o => o.text.toLowerCase().includes(needle));
+    if (opt) sel.value = opt.value;
+  }
+  if (f.subtotal != null || f.total != null) {
+    const sub = f.subtotal != null ? f.subtotal
+      : (f.total != null && f.tax_total != null ? f.total - f.tax_total : f.total);
+    const rate = (f.tax_total && sub) ? Math.round((f.tax_total / sub) * 10000) / 10000 : 0;
+    state.invDraftLines = [{ description: 'From supplier bill' + (f.external_number ? ' ' + f.external_number : ''), quantity: 1, unit_price: Math.round((sub || 0) * 100) / 100, tax_rate: rate }];
+    renderInvoiceLines();
+  }
+}
 document.getElementById('invoice-print').addEventListener('click', () => {
   if (state.invEditingId) {
     window.open('/invoices/' + state.invEditingId + '/print', '_blank');
@@ -2027,6 +2061,8 @@ function renderInvoiceAttachments() {
   if (!el) return;
   const saved = state.invAttachments || [];
   const pending = state.invPendingAttachments || [];
+  const rb = document.getElementById('invoice-read-file');
+  if (rb) rb.hidden = !(state.invEditingId && saved.length);
   if (!saved.length && !pending.length) { el.innerHTML = '<div class="muted">No files attached.</div>'; return; }
   el.innerHTML = '<ul class="doc-list">' +
     saved.map(a => `<li data-id="${a.id}">
@@ -3205,6 +3241,7 @@ document.querySelectorAll('.subtab').forEach(btn => {
     if (sub === 'sync') loadSyncRuns();
     if (sub === 'ops') { loadSystemInfo(); loadBackupList(); }
     if (sub === 'currencies') loadCurrencies();
+    if (sub === 'ai') loadAiSettings();
     if (sub === 'users') loadUsers();
   });
 });
@@ -3598,6 +3635,29 @@ async function loadSyncRuns() {
     </tr>
   `).join('');
 }
+
+// --- AI document reading settings ---
+async function loadAiSettings() {
+  try {
+    const c = await api.aiConfig();
+    const f = document.getElementById('ai-config-form');
+    document.getElementById('ai-engine').value = c.engine || 'subscription';
+    f.elements['model'].value = c.model || '';
+    f.elements['anthropic_key'].value = '';
+    f.elements['openai_key'].value = '';
+    document.getElementById('ai-anthropic-status').textContent = c.anthropic_key_set ? '· key set ✓' : '· no key';
+    document.getElementById('ai-openai-status').textContent = c.openai_key_set ? '· key set ✓' : '· no key';
+  } catch (e) { toast('Could not load AI settings: ' + e.message, 'error'); }
+}
+async function saveAiSettings() {
+  const f = document.getElementById('ai-config-form');
+  const body = { engine: f.elements['engine'].value, model: f.elements['model'].value };
+  if (f.elements['anthropic_key'].value) body.anthropic_key = f.elements['anthropic_key'].value;
+  if (f.elements['openai_key'].value) body.openai_key = f.elements['openai_key'].value;
+  try { await api.saveAiConfig(body); toast('AI settings saved', 'ok'); await loadAiSettings(); }
+  catch (e) { toast('Save failed: ' + e.message, 'error'); }
+}
+document.getElementById('ai-config-save')?.addEventListener('click', saveAiSettings);
 
 // --- Currencies sub-tab (FX rates + reporting currency) ---
 async function loadCurrencies() {
