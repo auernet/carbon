@@ -4,6 +4,54 @@ Durable decisions that apply across sessions. Newest on top. NEVER delete entrie
 
 ---
 
+## 2026-06-10 — Auth gate is default-DENY
+
+**Decision:** Everything requires a session/API token EXCEPT an explicit public allowlist
+(landing page, auth routes, static assets). Token-gated public routes (share links, iCal,
+healthz) register ABOVE the gate. New routes are private by default.
+
+**Why locked:** The old allowlist-by-prefix gate leaked `/contacts/:id/statement` (names, tax
+IDs, balances) to the open internet. Default-deny makes that class of leak impossible to
+reintroduce by forgetting a prefix.
+
+## 2026-06-10 — Ledger posting is atomic with the row write
+
+**Decision:** `postInvoiceFull` runs INSIDE the invoice/payment transaction; posting errors are
+never swallowed (boot backfill tolerates per-row); the AR/AP leg's base is the residual of the
+other legs so FX rounding can't unbalance an entry. Payments enforce the period lock on add AND
+delete; deleting a payment reopens a 'paid' invoice.
+
+**Why locked:** The audit found tax-bearing FX invoices could silently post NOTHING (caught
+throw → console only), payments bypassed the period lock, and paid invoices stuck 'paid'.
+These silently corrupt the books — the invariants above are what keep trial balance trustworthy.
+
+## 2026-06-10 — Bills: attachments + always-draft AI extraction
+
+**Decision:** Supplier files attach to invoices (multi-file, KYC-doc pattern, hardened
+serving). AI-extracted bill fields ALWAYS land in a draft a human reviews — never auto-posted.
+Duplicate bills (vendor + supplier number) warn, never hard-block.
+
+**Why locked:** AP accuracy beats automation speed; an unread number must never hit the books.
+
+## 2026-06-10 — AI engine config: encrypted keys, honest subscription mode
+
+**Decision:** AI keys live AES-GCM-encrypted in settings under `ai_*`, are never returned to
+the client (masked "key set" only), and the generic settings routes refuse `ai_*` keys. The
+engine selector defaults to 'subscription' which must stay an HONEST no-op on the server
+(clear error telling Ben to add a key) — bills are never sent anywhere unless a key engine is
+explicitly chosen.
+
+**Why locked:** Ben's mental model ("use my subscription") would otherwise invite a placebo or
+a silent data-send. Honesty about where documents go is non-negotiable for KYC-grade files.
+
+## 2026-06-10 — Container runs non-root; cookies SameSite=Strict
+
+**Decision:** Prod container drops to the unprivileged user via the gosu entrypoint (chowns
+`/app/data` first); keep on any Dockerfile change. Session cookies are `SameSite=Strict`.
+
+**Why locked:** Code-exec in the container must not be root on a shared VPS; Strict closes the
+clicked-link request-forgery class (the audit's backup-download exfil).
+
 ## 2026-06-06 — Ledger money stays REAL (NOT integer cents)
 
 **Decision:** The ledger persists money as `REAL` + `round2()` + 0.01 balance tolerance,

@@ -4,6 +4,60 @@ Alternatives explored and rejected, with reasoning. Newest on top. NEVER delete 
 
 ---
 
+## 2026-06-10 — Ben's Claude subscription as the live site's AI engine
+
+**Context:** AI document reading for bills ("we can use the local ai subscription no?").
+
+**The idea:** Have carbon.aa.ag read bills using Ben's flat Claude subscription instead of a
+pay-per-use API key.
+
+**Why it lost:** A deployed server can't authenticate as a consumer subscription; that
+subscription powers local/chat use (Claude Code). The honest design shipped instead: engine
+selector defaults to 'subscription' (free, local-only, clear error on the server) and the live
+site uses an Anthropic API key (~pennies per bill, encrypted in settings).
+
+**Could we revisit?** Maybe later — if an official server-side subscription auth path ships, or
+a Claude agent is installed on the VPS to process a queue locally.
+
+## 2026-06-10 — Wire the OpenAI (GPT) engine now
+
+**The idea:** Implement OpenAI extraction alongside Anthropic in the bill reader.
+
+**Why it lost:** Ben needs one working engine; the key slot is stored (encrypted) and the
+engine returns an honest "not wired yet" instead of placebo. Revisit when Ben asks to use it.
+
+## 2026-06-10 — Email-in bill inbox
+
+**The idea:** Forward a supplier email to bills@… → auto-creates a draft bill.
+
+**Why it lost:** Carbon only *sends* mail today; inbound needs new infra (mail-in service,
+parsing, security). Drag-drop + bulk queue + AI read cover the volume. Revisit after the
+attach/AI flow proves out in daily use.
+
+## 2026-06-10 — Hard-block duplicate bills
+
+**The idea:** Refuse to save a bill whose vendor + supplier-number already exists.
+
+**Why it lost:** Legit re-issues/corrections exist; a hard block punishes the honest case.
+Shipped warn-and-confirm instead. Load-bearing: keep warn-only.
+
+## 2026-06-10 — Transaction-wrap the whole migration block / schema_version table
+
+**Context:** Audit flagged migrations as unguarded.
+
+**The idea:** One big transaction around boot migrations plus a version table.
+
+**Why it lost:** Every statement is already idempotent (guarded ALTER / IF NOT EXISTS), so a
+crash mid-sequence resumes safely; a full wrap is high-risk/low-value churn. Shipped loud,
+actionable failure logging instead. Revisit only if a non-idempotent migration becomes necessary.
+
+## 2026-06-10 — Delete the "dead" dashboard counter CSS (audit false positive)
+
+**The idea:** The audit's design pass flagged the counter styles as orphaned and removable.
+
+**Why it lost:** Verified live — the dashboard renders those classes. FALSE POSITIVE; do not
+remove. (General lesson logged: verify "dead code" findings against the running app first.)
+
 ## 2026-06-06 — Budgets / budget-vs-actual
 
 **The idea:** A budgets subsystem — set a planned number per category, show actual vs plan.

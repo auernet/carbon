@@ -54,3 +54,5 @@ section headers) — never every label. Token-based; adapts to dark + light auto
 | 2026-06-06 | Full double-entry ledger shipped live (Ledger tab: statements, cash flow, aging, drill-down, CSV, chart mgmt, period lock, USD group view). |
 | 2026-06-06 | Ledger money stays `REAL` (not cents); `AGENTS.md` cents/formatter rules are SPRKS-derived — verify against Carbon's actual code before applying. |
 | 2026-06-06 | Money flows: only income/expense hit P&L; transfer/capital/dividend/loan post to equity. Group view is a USD summary, not a consolidated balance sheet. |
+| 2026-06-10 | Security baseline: default-DENY auth gate (public = explicit allowlist), non-root container, SameSite=Strict cookies, AI keys encrypted + never returned. |
+| 2026-06-10 | Bills: supplier files attach to invoices; AI read-&-fill is ALWAYS a draft a human confirms; 'subscription' engine = honest local-only no-op on the server. |

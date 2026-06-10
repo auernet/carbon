@@ -6,6 +6,35 @@ Newest on top.
 
 ---
 
+### 2026-06-10 — Full audit → 16 fixes → live ship → bills capture + AI reading
+
+**Friction noted:**
+- **Gate waiver:** Ben ran `/ship but without using the gates` — honored as a ONE-TIME waiver
+  of the 3-model review; default back to the gate next ship, don't treat as standing.
+- **`/handoff-go` still SPRKS-shaped** — re-derived Carbon paths AGAIN (docs/briefs/ not
+  src/docs/briefs/, main not dev, Coolify not ship-permit). Third session in a row.
+- **Context watch fired at ~53%, handoff happened at ~73%** — I offered the handoff twice but
+  kept building on "continue building"; next time make the offer the DEFAULT action at the
+  task boundary after the watch fires, not a footnote.
+- **Subscription mental model:** "we can use the local ai subscription no?" — Ben expects his
+  Claude subscription to power server features. Resolved with the honest-engine pattern
+  (explorations entry); expect this on every future AI feature.
+
+**Recurring patterns:**
+- Sweep authorization stayed sticky twice ("do all one by one" → 16 fixes; "add all one by
+  one" → 7 features) — zero re-asks, matched intent both times ✓.
+- "no pls fix your self" → drive the Coolify Redeploy myself via the Chrome connector;
+  push≠live discipline caught stale prod again (poll for a new symbol before claiming live) ✓.
+- The audit agents' findings needed hand-verification — 2 were false positives (dead CSS that
+  is live; statements "no-escape" partially mitigated). Verify before reporting held ✓.
+
+**Suggested workflow tweaks:**
+- Write Carbon-native `/ship` + `/handoff-go` (main branch, Coolify browser Redeploy,
+  `docs/HANDOFF-*`, `docs/briefs/`) — the SPRKS re-derivation tax is now 3 sessions old.
+- After a CONTEXT WATCH fires, treat the next completed task as the handoff point by default.
+
+---
+
 ### 2026-06-06 — Ledger build (20 commits) + 3-model ship gate + live deploy
 
 **Friction noted:**
