@@ -1,9 +1,11 @@
 # Carbon — Audit hardening + Bills capture Handoff 2026-06-10
 
-**Status: code DONE + tested; bills batch NOT live.** The audit-fix batch (9 commits) IS live
-on carbon.aa.ag (verified 2026-06-06, incl. browser check of the fixed password dialog). The
-**five bill-capture commits are pushed to origin/main at handoff but await the manual Coolify
-Redeploy** — that's the next move (see §6 / `docs/briefs/bills-ship.md`).
+**Status: SHIPPED — everything is live.** The bills batch went live 2026-06-10 ~04:53 UTC via
+Coolify Redeploy (commit 9895564 built). Verified on prod: new app.js symbol serving, healthz
+ok with reset uptime, **non-root container's first boot clean** (boot-time backup wrote to the
+data volume — write perms proven), logged-out 302 intact, entities/invoices intact, bill dialog
+shows Attached files + hidden Read-&-fill, Bulk bills present, Settings → AI reading renders
+with masked empty keys, zero console errors. Remaining: Ben's manual items only (§4 item 2).
 
 ## §0 Session at a glance
 - Ask 1: *"full in-depth audit"* → 5-dimension audit (security / accounting / frontend / ops /
@@ -52,7 +54,7 @@ Redeploy** — that's the next move (see §6 / `docs/briefs/bills-ship.md`).
 - `.claude/audits/full-audit-2026-06-06.md` (new — findings + resolution log)
 
 ## §4 Open items
-1. **SHIP the bills batch** ← the chip's job. Coolify Redeploy + verify (steps in the brief).
+1. ~~SHIP the bills batch~~ **DONE 2026-06-10** — Redeploy + full prod verify (see Status).
 2. **Ben-only manual items** (also in auto-memory): rotate live admin password → set
    `BOOTSTRAP_ADMIN_*` in Coolify; rotate the Coolify deploy token → keychain; pick an off-site
    backup destination → set `CARBON_BACKUP_POSTHOOK` (+ tool in image); **paste an Anthropic API
