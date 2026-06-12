@@ -6,6 +6,29 @@ Newest on top.
 
 ---
 
+### 2026-06-12 — Ship-relay session (bills batch went live 2026-06-10)
+
+**Friction noted:**
+- **`/build` is SPRKS-shaped — 4th session:** it demands a build prompt file + worktree that
+  don't exist/apply in Carbon. The brief carried the real steps so nothing broke, but every
+  relay re-derives this. The Carbon-native commands are now the oldest open workflow debt.
+- **Relay cleanup step carried a wrong assumption:** "archive the previous session (newest in
+  list)" — the predecessor had already self-deleted via `/handoff-go`, and the newest listed
+  session was an unrelated RUNNING SPRKS chat. Matched on project folder, archived nothing.
+  Tweak: handoff-go relays should drop the archive step — the skill already deletes itself.
+
+**Recurring patterns:**
+- push≠live discipline held end-to-end: baseline healthz → Redeploy → poll for new symbol →
+  uptime-reset check → deploy + runtime logs → UI walkthrough, before claiming live ✓.
+- Prod-data hygiene: verified the hidden Read-&-fill button by inspection instead of uploading
+  a junk file to Ben's live ERP; declined a stale draft-recovery popup mid-check ✓.
+
+**Suggested workflow tweak:**
+- Write the Carbon-native `/ship` + `/build` + `/handoff-go` (main branch, Coolify browser
+  Redeploy, `docs/HANDOFF-*`, `docs/briefs/`, no worktree for deploys) — four sessions now.
+
+---
+
 ### 2026-06-10 — Full audit → 16 fixes → live ship → bills capture + AI reading
 
 **Friction noted:**

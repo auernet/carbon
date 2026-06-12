@@ -36,7 +36,10 @@ with masked empty keys, zero console errors. Remaining: Ben's manual items only 
 | 86691ee | Bills: attach the supplier's file, vendor-first prefill, duplicate-bill guard |
 | 23b9508 | Bills: bulk-bills queue — file a stack of supplier docs one by one |
 | da815e0 | Bills: AI document reading — engine + keys in Settings, Read-&-fill from file |
-| — | *(↑ pushed at handoff, NOT yet deployed)* |
+| — | *(↑ deployed + verified live 2026-06-10 ~04:53 UTC)* |
+| 6342616 | Handoff: bills batch shipped + verified live (2026-06-10) |
+| dfa110d | Tooling: graphify codebase brain (AGENTS.md section, ignore rules, autoVerify off) |
+| — | *(↑ ship-relay session: Coolify Redeploy + full prod verify + close-out)* |
 
 ## §2 Decisions locked (full text in `.claude/locked-decisions.md`)
 | Decision |
@@ -81,11 +84,25 @@ with masked empty keys, zero console errors. Remaining: Ben's manual items only 
 - Bulk-void toast, save-silently-fails, and the dead change-password dialog were the
   user-trust bugs Ben's team would have hit daily — all fixed + browser-verified.
 
-## §6 Resume protocol
-1. Read this handoff, then `docs/briefs/bills-ship.md`.
-2. `git log -15 --oneline` + `git status` (expect clean, in sync with origin/main).
-3. Execute the brief: Coolify Redeploy via the logged-in browser UI → poll
-   `carbon.aa.ag/app.js` for `invoice-read-file` → verify AI panel + healthz + no console
-   errors → report plainly.
-4. Then surface §4 item 2 (Ben's manual list) in plain English.
+*Added by the ship-relay session (2026-06-10/12):*
+- **The relay's "archive the previous session" cleanup step was based on a wrong assumption** —
+  the predecessor session had already deleted itself (that's what `/handoff-go` does), and the
+  newest listed session was an unrelated RUNNING SPRKS chat. Matched on project folder before
+  acting; archived nothing. Future relay prompts should drop the archive step entirely.
+- **Prod-data hygiene during verification:** did NOT upload a junk test file to the live site
+  just to surface the "Read & fill from file" button — confirmed the button exists (hidden
+  until a file is attached, by design) by inspecting the live dialog instead. Also declined a
+  12-day-old local draft-recovery popup so the check ran on a clean form.
+- **Non-root proof, for the record:** the strongest evidence the new container can write its
+  data volume wasn't the health check — it was the boot-time catch-up backup successfully
+  writing its archive file seconds after start.
+
+## §6 Resume protocol (post-ship — updated 2026-06-12)
+1. Read this handoff. **The bills batch is LIVE and verified; nothing waits to deploy.**
+2. `git log -10 --oneline` + `git status` (expect clean, in sync with origin/main).
+3. The only blockers for live AI bill reading are Ben's manual items (§4 item 2) — surface
+   them in plain English if Ben hasn't done them yet (check Settings → AI reading for a key).
+4. Next build candidates, in rough order of value: email-in bill inbox; OpenAI engine wiring;
+   Reports/Settings card polish via `/preview`; Carbon-native `/ship`+`/build`+`/handoff-go`
+   commands (4 sessions of SPRKS re-derivation now — see workflow-observations).
 5. Keep this handoff updated if more lands.
