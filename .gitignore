@@ -7,3 +7,6 @@ data/
 
 # /preview throwaway sandbox routes — keep them out of git so a build/stash never sweeps them mid-session
 src/app/preview-*/
+
+# graphify codebase brain output — regenerable, never commit
+graphify-out/

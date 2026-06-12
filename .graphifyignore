@@ -1,0 +1,16 @@
+# graphify codebase brain — keep extraction code-only so it never needs a model key.
+# gitignore syntax.
+*.md
+*.html
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.txt
+*.webmanifest
+*.yml
+*.yaml
+docs/
+data/
+**/__fixtures__/

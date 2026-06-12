@@ -57,3 +57,9 @@ the global honest-software rules apply on top.
   comments that assume a push auto-deploys, or a "deployed/live" claim with no verify.
 - **Docker bind mount: copy, don't rename across `/app/data`** — rename across the
   mount fails (the restore bug). Flag an `fs.rename` that crosses the data bind mount.
+
+## Codebase brain (graphify)
+
+This repo has a graphify knowledge graph (call graphs, imports, structure). Query it instead of grepping blind:
+`graphify query "<question>"` · `graphify explain "<symbol>"` · `graphify affected "<symbol>"` (what breaks if I change this).
+It self-refreshes via git hooks on every commit. One-time per clone: `uv tool install "graphifyy[anthropic]"` then `graphify install` then `graphify .`. Output (graphify-out/) is gitignored — never commit it. The .graphifyignore keeps extraction code-only.
